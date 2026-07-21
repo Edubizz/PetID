@@ -12,7 +12,13 @@ function QrPage() {
   const { data: pets = [] } = useQuery({
     queryKey: ["pets"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("pets").select("id, name, photo_url, public_slug, breed");
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes.user?.id;
+      if (!uid) return [];
+      const { data, error } = await supabase
+        .from("pets")
+        .select("id, name, photo_url, public_slug, breed")
+        .eq("owner_id", uid);
       if (error) throw error;
       return data;
     },

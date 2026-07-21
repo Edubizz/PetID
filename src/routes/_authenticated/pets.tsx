@@ -18,7 +18,14 @@ function PetsList() {
   const { data: pets = [] } = useQuery({
     queryKey: ["pets"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("pets").select("*").order("created_at", { ascending: false });
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes.user?.id;
+      if (!uid) return [];
+      const { data, error } = await supabase
+        .from("pets")
+        .select("*")
+        .eq("owner_id", uid)
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },

@@ -12,7 +12,11 @@ function useDashboardStats() {
   return useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: async () => {
-      const { data: pets } = await supabase.from("pets").select("id, name, is_lost, photo_url, breed");
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes.user?.id;
+      const { data: pets } = uid
+        ? await supabase.from("pets").select("id, name, is_lost, photo_url, breed").eq("owner_id", uid)
+        : { data: [] as { id: string; name: string; is_lost: boolean; photo_url: string | null; breed: string | null }[] };
       const petIds = (pets ?? []).map((p) => p.id);
       const today = new Date().toISOString();
       const nextMonth = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);

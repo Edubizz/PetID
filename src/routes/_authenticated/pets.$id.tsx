@@ -45,7 +45,15 @@ function PetDetail() {
   const { data: pet, isLoading } = useQuery({
     queryKey: ["pet", id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("pets").select("*").eq("id", id).maybeSingle();
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes.user?.id;
+      if (!uid) return null;
+      const { data, error } = await supabase
+        .from("pets")
+        .select("*")
+        .eq("id", id)
+        .eq("owner_id", uid)
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
