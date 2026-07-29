@@ -164,6 +164,44 @@ export type Database = {
           },
         ]
       }
+      lost_mode_events: {
+        Row: {
+          created_at: string
+          event: string
+          id: string
+          last_seen_location: string | null
+          occurred_at: string
+          pet_id: string
+          reward_amount: number | null
+        }
+        Insert: {
+          created_at?: string
+          event: string
+          id?: string
+          last_seen_location?: string | null
+          occurred_at?: string
+          pet_id: string
+          reward_amount?: number | null
+        }
+        Update: {
+          created_at?: string
+          event?: string
+          id?: string
+          last_seen_location?: string | null
+          occurred_at?: string
+          pet_id?: string
+          reward_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lost_mode_events_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pet_scans: {
         Row: {
           created_at: string
@@ -200,6 +238,7 @@ export type Database = {
           breed: string | null
           color: string | null
           created_at: string
+          emergency_instructions: string | null
           id: string
           is_lost: boolean
           is_verified: boolean
@@ -214,6 +253,7 @@ export type Database = {
           pedigree: string | null
           photo_url: string | null
           public_slug: string
+          reward_amount: number | null
           secondary_contact_name: string | null
           secondary_contact_phone: string | null
           sex: string | null
@@ -228,6 +268,7 @@ export type Database = {
           breed?: string | null
           color?: string | null
           created_at?: string
+          emergency_instructions?: string | null
           id?: string
           is_lost?: boolean
           is_verified?: boolean
@@ -242,6 +283,7 @@ export type Database = {
           pedigree?: string | null
           photo_url?: string | null
           public_slug?: string
+          reward_amount?: number | null
           secondary_contact_name?: string | null
           secondary_contact_phone?: string | null
           sex?: string | null
@@ -256,6 +298,7 @@ export type Database = {
           breed?: string | null
           color?: string | null
           created_at?: string
+          emergency_instructions?: string | null
           id?: string
           is_lost?: boolean
           is_verified?: boolean
@@ -270,6 +313,7 @@ export type Database = {
           pedigree?: string | null
           photo_url?: string | null
           public_slug?: string
+          reward_amount?: number | null
           secondary_contact_name?: string | null
           secondary_contact_phone?: string | null
           sex?: string | null
@@ -324,6 +368,7 @@ export type Database = {
           notified_push_at: string | null
           notified_whatsapp_at: string | null
           pet_id: string
+          photo_url: string | null
           reporter_contact: string | null
           reporter_name: string | null
           status: string
@@ -338,6 +383,7 @@ export type Database = {
           notified_push_at?: string | null
           notified_whatsapp_at?: string | null
           pet_id: string
+          photo_url?: string | null
           reporter_contact?: string | null
           reporter_name?: string | null
           status?: string
@@ -352,6 +398,7 @@ export type Database = {
           notified_push_at?: string | null
           notified_whatsapp_at?: string | null
           pet_id?: string
+          photo_url?: string | null
           reporter_contact?: string | null
           reporter_name?: string | null
           status?: string
@@ -359,6 +406,110 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "sightings_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracker_entries: {
+        Row: {
+          completed_at: string
+          created_at: string
+          id: string
+          metadata: Json
+          notes: string | null
+          pet_id: string
+          tracker_id: string
+          value: number
+        }
+        Insert: {
+          completed_at?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          pet_id: string
+          tracker_id: string
+          value?: number
+        }
+        Update: {
+          completed_at?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          pet_id?: string
+          tracker_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracker_entries_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracker_entries_tracker_id_fkey"
+            columns: ["tracker_id"]
+            isOneToOne: false
+            referencedRelation: "trackers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trackers: {
+        Row: {
+          color: string | null
+          created_at: string
+          icon: string | null
+          id: string
+          is_active: boolean
+          metadata: Json
+          pet_id: string
+          reminder_times: string[]
+          target_per_day: number
+          title: string
+          category: string
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          pet_id: string
+          reminder_times?: string[]
+          target_per_day?: number
+          title: string
+          category: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          pet_id?: string
+          reminder_times?: string[]
+          target_per_day?: number
+          title?: string
+          category?: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trackers_pet_id_fkey"
             columns: ["pet_id"]
             isOneToOne: false
             referencedRelation: "pets"
@@ -607,12 +758,14 @@ export type Database = {
           id: string
           is_lost: boolean
           last_seen_location: string
+          lost_since: string
           medical_notes: string
           medications: string
           microchip: string
           name: string
           photo_url: string
           public_slug: string
+          reward_amount: number
           secondary_contact_phone: string
           sex: string
           show_medical_public: boolean

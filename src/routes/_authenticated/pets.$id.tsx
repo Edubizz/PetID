@@ -16,6 +16,10 @@ import { HealthTab } from "@/components/pet/HealthTab";
 import { HistoryTab } from "@/components/pet/HistoryTab";
 import { DocumentsTab } from "@/components/pet/DocumentsTab";
 import { CaretakersTab } from "@/components/pet/CaretakersTab";
+import { LostModeTab } from "@/components/pet/LostModeTab";
+import { DailyCareTab } from "@/components/pet/DailyCareTab";
+import { TimelineTab } from "@/components/pet/TimelineTab";
+import { DashboardTab } from "@/components/pet/DashboardTab";
 import { ConfirmDialog } from "@/components/pet/ConfirmDialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -77,6 +81,7 @@ function PetDetail() {
 
   const [form, setForm] = useState<any>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [activeTab, setActiveTab] = useState("dashboard");
   useEffect(() => { if (pet) setForm(pet); }, [pet]);
 
   const saveInfo = useMutationSave(id, form, qc);
@@ -117,12 +122,20 @@ function PetDetail() {
   const publicUrl = typeof window !== "undefined" ? `${window.location.origin}/p/${pet.public_slug}` : `/p/${pet.public_slug}`;
 
   const toggleLost = async () => {
+    const activating = !pet.is_lost;
     const { error } = await supabase.from("pets").update({
-      is_lost: !pet.is_lost,
-      lost_since: !pet.is_lost ? new Date().toISOString() : null,
+      is_lost: activating,
+      lost_since: activating ? new Date().toISOString() : null,
     }).eq("id", id);
     if (error) return toast.error(error.message);
-    toast.success(!pet.is_lost ? "Modo perdido ativado" : "Pet marcado como encontrado");
+    toast.success(activating ? "Modo perdido ativado" : "Pet marcado como encontrado");
+    // Fire-and-forget history log for the Health Timeline; never blocks the toggle above.
+    void supabase.from("lost_mode_events").insert({
+      pet_id: id,
+      event: activating ? "activated" : "resolved",
+      last_seen_location: pet.last_seen_location,
+      reward_amount: pet.reward_amount,
+    });
     qc.invalidateQueries({ queryKey: ["pet", id] });
   };
 
@@ -184,15 +197,23 @@ function PetDetail() {
         scanCount={indicators?.scanCount ?? 0}
       />
 
-      <Tabs defaultValue="info" className="mt-8">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-8">
         <TabsList className="flex w-full flex-wrap justify-start">
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="info">Informações</TabsTrigger>
+          <TabsTrigger value="timeline">Linha do Tempo</TabsTrigger>
+          <TabsTrigger value="daily-care">Cuidados Diários</TabsTrigger>
           <TabsTrigger value="health">Saúde</TabsTrigger>
           <TabsTrigger value="history">Histórico</TabsTrigger>
           <TabsTrigger value="documents">Documentos</TabsTrigger>
           <TabsTrigger value="caretakers">Tutores</TabsTrigger>
           <TabsTrigger value="qr">QR Code</TabsTrigger>
+          <TabsTrigger value="lost" className={pet.is_lost ? "text-destructive" : undefined}>Modo Perdido</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="dashboard" className="mt-6">
+          <DashboardTab pet={pet} onNavigate={setActiveTab} />
+        </TabsContent>
 
         <TabsContent value="info" className="mt-6">
           <div className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
@@ -225,6 +246,14 @@ function PetDetail() {
               </Button>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="timeline" className="mt-6">
+          <TimelineTab pet={pet} />
+        </TabsContent>
+
+        <TabsContent value="daily-care" className="mt-6">
+          <DailyCareTab petId={pet.id} />
         </TabsContent>
 
         <TabsContent value="health" className="mt-6">
@@ -261,6 +290,10 @@ function PetDetail() {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="lost" className="mt-6">
+          <LostModeTab pet={pet} onToggleLost={toggleLost} />
         </TabsContent>
       </Tabs>
 

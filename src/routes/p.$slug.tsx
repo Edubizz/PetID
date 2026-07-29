@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, MessageCircle, MapPin } from "lucide-react";
+import { AlertTriangle, MessageCircle, MapPin, Gift, Search } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useState } from "react";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import petPlaceholder from "@/assets/pet-placeholder.jpg";
 import { dispatchSightingNotifications } from "@/lib/notify";
+import { formatCurrencyBRL, formatDateTime } from "@/lib/pet-utils";
+import { PhotoUploader } from "@/components/PhotoUploader";
 
 export const Route = createFileRoute("/p/$slug")({
   head: () => ({
@@ -54,17 +56,29 @@ function PublicPet() {
 
       <div className="mx-auto max-w-md px-4 py-6">
         {pet.is_lost && (
-          <div className="mb-4 flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive p-4 text-destructive-foreground">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-            <div>
-              <p className="font-semibold">Pet desaparecido</p>
-              <p className="text-sm opacity-90">Se você viu {pet.name}, entre em contato com o tutor.</p>
+          <div className="mb-4 rounded-2xl border-2 border-destructive bg-destructive p-5 text-center text-destructive-foreground shadow-[var(--shadow-elegant)]">
+            <AlertTriangle className="mx-auto h-7 w-7" />
+            <p className="mt-1.5 text-xl font-extrabold tracking-tight">PET DESAPARECIDO</p>
+            <p className="mt-1 text-sm opacity-90">Se você viu {pet.name}, ajude a família a reencontrá-lo.</p>
+            <div className="mt-3 space-y-1 text-xs opacity-90">
               {pet.last_seen_location && (
-                <p className="mt-1 inline-flex items-center gap-1 text-xs opacity-80">
-                  <MapPin className="h-3 w-3" /> Última localização: {pet.last_seen_location}
-                </p>
+                <p className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" /> Última localização: {pet.last_seen_location}</p>
+              )}
+              {pet.lost_since && (
+                <p>Visto pela última vez em {formatDateTime(pet.lost_since)}</p>
               )}
             </div>
+            {pet.reward_amount ? (
+              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-sm font-semibold">
+                <Gift className="h-4 w-4" /> Recompensa: {formatCurrencyBRL(pet.reward_amount)}
+              </div>
+            ) : null}
+            <Button
+              className="mt-4 w-full rounded-full bg-background text-foreground hover:bg-background/90"
+              onClick={() => document.getElementById("sighting-form")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            >
+              <Search className="mr-2 h-4 w-4" /> ENCONTREI ESSE PET
+            </Button>
           </div>
         )}
 
@@ -144,6 +158,7 @@ function SightingForm({
   const [contact, setContact] = useState("");
   const [location, setLocation] = useState("");
   const [message, setMessage] = useState("");
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -153,6 +168,7 @@ function SightingForm({
         reporter_contact: contact || null,
         location: location || null,
         message: message || null,
+        photo_url: photoUrl || null,
       });
       if (error) throw error;
       // Fire-and-forget: prepared abstraction; currently no-op but records intent.
@@ -168,14 +184,14 @@ function SightingForm({
     },
     onSuccess: () => {
       toast.success("Avistamento registrado! O tutor foi notificado.");
-      setName(""); setContact(""); setLocation(""); setMessage("");
+      setName(""); setContact(""); setLocation(""); setMessage(""); setPhotoUrl(null);
     },
     onError: (e: unknown) =>
       toast.error(e instanceof Error ? e.message : "Não foi possível registrar."),
   });
 
   return (
-    <div className="mt-6 rounded-xl border border-border p-4">
+    <div id="sighting-form" className="mt-6 scroll-mt-6 rounded-xl border border-border p-4">
       <p className="font-semibold">Encontrou este pet?</p>
       <p className="mt-1 text-xs text-muted-foreground">Envie informações para ajudar o tutor.</p>
       <form
@@ -186,6 +202,12 @@ function SightingForm({
         <div><Label className="text-xs">Contato (WhatsApp/telefone)</Label><Input value={contact} onChange={(e) => setContact(e.target.value)} /></div>
         <div><Label className="text-xs">Localização</Label><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Bairro, cidade, ponto de referência" /></div>
         <div><Label className="text-xs">Mensagem</Label><Textarea rows={2} value={message} onChange={(e) => setMessage(e.target.value)} /></div>
+        <div>
+          <Label className="text-xs">Foto (opcional)</Label>
+          <div className="mt-1.5">
+            <PhotoUploader value={photoUrl} onChange={setPhotoUrl} size={80} />
+          </div>
+        </div>
         <Button type="submit" className="w-full rounded-full" disabled={mutation.isPending}>
           Informar avistamento
         </Button>

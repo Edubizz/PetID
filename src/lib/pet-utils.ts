@@ -27,6 +27,11 @@ export function formatDateTime(value: string | null | undefined): string {
   return d.toLocaleString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+export function formatCurrencyBRL(value: number | null | undefined): string {
+  if (!value || value <= 0) return "—";
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 export function relativeFromNow(value: string | null | undefined): string {
   if (!value) return "—";
   const d = new Date(value).getTime();
