@@ -18,7 +18,9 @@ CREATE POLICY "Users manage own profile" ON public.profiles FOR ALL USING (auth.
 CREATE TABLE public.pets (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  public_slug TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(6), 'hex'),
+  -- 12-char lowercase hex slug, derived from the fully-random time_low+time_mid
+  -- fields of a core-Postgres gen_random_uuid() (no extension required).
+  public_slug TEXT NOT NULL UNIQUE DEFAULT left(replace(gen_random_uuid()::text, '-', ''), 12),
   name TEXT NOT NULL,
   species TEXT,
   breed TEXT,
