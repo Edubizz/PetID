@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,21 +16,37 @@ import {
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { Plus, Pencil, Trash2, Flame, Trophy, Target, Star, type LucideIcon } from "lucide-react";
+import {
+  Plus, Pencil, Trash2, Flame, Trophy, Target, Star, Sparkles, ArrowLeft, X,
+  Dog, Cat, Bird, Rabbit, HelpCircle, AlertTriangle, RefreshCw, type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ResponsiveContainer, BarChart, Bar, XAxis, Tooltip } from "recharts";
+import { useQuickLogEntry } from "@/hooks/useQuickLogEntry";
+import { QuickLogControl } from "@/components/pet/QuickLogControl";
+import { logAndDescribeError } from "@/lib/errors";
 import {
   CATEGORY_META,
   CATEGORY_OPTIONS,
   SPECIES_PRESETS,
+  AGE_OPTIONS,
+  SIZE_OPTIONS,
+  LIFESTYLE_OPTIONS,
+  buildSmartRoutine,
   computeStats,
   groupEntriesByDay,
   dayKey,
   dayLabel,
   formatTime,
   todayKey,
+  setLastQuickValue,
+  usesQuantityQuickLog,
   type TrackerCategory,
   type SpeciesPresetKey,
+  type PetAgeGroup,
+  type PetSize,
+  type PetLifestyle,
+  type RoutineDraftItem,
   type DailyCareStats,
 } from "@/lib/daily-care";
 
@@ -65,14 +81,19 @@ function toDatetimeLocalNow(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function DailyCareTab({ petId }: { petId: string }) {
+export function DailyCareTab({ petId, petName }: { petId: string; petName?: string }) {
   const qc = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Tracker | null>(null);
   const [toDelete, setToDelete] = useState<Tracker | null>(null);
   const [presetsOpen, setPresetsOpen] = useState(false);
 
-  const { data: trackers, isLoading: loadingTrackers } = useQuery({
+  const {
+    data: trackers,
+    isLoading: loadingTrackers,
+    isError: trackersFailed,
+    refetch: refetchTrackers,
+  } = useQuery({
     queryKey: ["trackers", petId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -91,7 +112,12 @@ export function DailyCareTab({ petId }: { petId: string }) {
     return d.toISOString();
   }, []);
 
-  const { data: entries, isLoading: loadingEntries } = useQuery({
+  const {
+    data: entries,
+    isLoading: loadingEntries,
+    isError: entriesFailed,
+    refetch: refetchEntries,
+  } = useQuery({
     queryKey: ["tracker-entries", petId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -105,26 +131,24 @@ export function DailyCareTab({ petId }: { petId: string }) {
     },
   });
 
+  // Trackers/entries created or changed here also feed the cross-pet Today
+  // page, the per-pet Dashboard tab hero (health score/streak) and Timeline —
+  // every mutation below must invalidate all four, not just this tab's own
+  // ["trackers"/"tracker-entries", petId] queries.
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["trackers", petId] });
     qc.invalidateQueries({ queryKey: ["tracker-entries", petId] });
+    qc.invalidateQueries({ queryKey: ["today-care-overview"] });
+    qc.invalidateQueries({ queryKey: ["home-agenda"] });
+    qc.invalidateQueries({ queryKey: ["health-timeline", petId] });
   };
 
-  const quickLog = useMutation({
-    mutationFn: async (tracker: Tracker) => {
-      const { error } = await supabase.from("tracker_entries").insert({
-        tracker_id: tracker.id,
-        pet_id: petId,
-        value: CATEGORY_META[tracker.category].quickValue,
-      });
-      if (error) throw error;
-    },
-    onSuccess: (_data, tracker) => {
-      toast.success(`${tracker.title} registrado`);
-      qc.invalidateQueries({ queryKey: ["tracker-entries", petId] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const quickLog = useQuickLogEntry(petId, [
+    ["tracker-entries", petId],
+    ["today-care-overview"],
+    ["home-agenda"],
+    ["health-timeline", petId],
+  ]);
 
   const customLog = useMutation({
     mutationFn: async (payload: { tracker: Tracker; value: number; notes: string; completedAt: string }) => {
@@ -137,11 +161,17 @@ export function DailyCareTab({ petId }: { petId: string }) {
       });
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, payload) => {
+      if (usesQuantityQuickLog(payload.tracker.category, payload.tracker.unit)) {
+        setLastQuickValue(payload.tracker.id, payload.value);
+      }
       toast.success("Registro adicionado");
       qc.invalidateQueries({ queryKey: ["tracker-entries", petId] });
+      qc.invalidateQueries({ queryKey: ["today-care-overview"] });
+      qc.invalidateQueries({ queryKey: ["home-agenda"] });
+      qc.invalidateQueries({ queryKey: ["health-timeline", petId] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: customLog failed", e, "Não foi possível adicionar o registro.")),
   });
 
   const createPreset = useMutation({
@@ -166,7 +196,28 @@ export function DailyCareTab({ petId }: { petId: string }) {
       invalidate();
       setPresetsOpen(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: createPreset failed", e, "Não foi possível criar os trackers predefinidos.")),
+  });
+
+  const createRoutine = useMutation({
+    mutationFn: async (items: RoutineDraftItem[]) => {
+      const rows = items.map((t) => ({
+        pet_id: petId,
+        title: t.title,
+        category: t.category,
+        target_per_day: t.target_per_day,
+        unit: t.unit,
+        color: CATEGORY_META[t.category].color,
+      }));
+      if (rows.length === 0) return;
+      const { error } = await supabase.from("trackers").insert(rows);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Plano de cuidados criado!");
+      invalidate();
+    },
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: createRoutine failed", e, "Não foi possível criar o plano de cuidados. Tente novamente.")),
   });
 
   const removeTracker = useMutation({
@@ -179,7 +230,7 @@ export function DailyCareTab({ petId }: { petId: string }) {
       invalidate();
       setToDelete(null);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: removeTracker failed", e, "Não foi possível remover o tracker.")),
   });
 
   const toggleActive = useMutation({
@@ -188,7 +239,7 @@ export function DailyCareTab({ petId }: { petId: string }) {
       if (error) throw error;
     },
     onSuccess: () => invalidate(),
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: toggleActive failed", e, "Não foi possível atualizar o tracker.")),
   });
 
   const todaySums = useMemo(() => {
@@ -224,6 +275,7 @@ export function DailyCareTab({ petId }: { petId: string }) {
   const activeTrackers = (trackers ?? []).filter((t) => t.is_active);
   const inactiveTrackers = (trackers ?? []).filter((t) => !t.is_active);
   const isLoading = loadingTrackers || loadingEntries;
+  const hasError = trackersFailed || entriesFailed;
 
   if (isLoading) {
     return (
@@ -234,10 +286,36 @@ export function DailyCareTab({ petId }: { petId: string }) {
     );
   }
 
+  // Never fall through to the "no trackers yet" onboarding wizard on a load
+  // failure — the pet may already have trackers, and showing the wizard here
+  // risks the user creating a second, duplicate routine on top of them.
+  if (hasError) {
+    return (
+      <div className="rounded-2xl border border-dashed border-destructive/40 bg-destructive/5 p-8 text-center">
+        <AlertTriangle className="mx-auto h-8 w-8 text-destructive" />
+        <p className="mt-3 font-medium text-destructive">Não foi possível carregar os cuidados diários.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Verifique sua conexão e tente novamente.</p>
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-4 rounded-full"
+          onClick={() => { void refetchTrackers(); void refetchEntries(); }}
+        >
+          <RefreshCw className="mr-2 h-4 w-4" /> Tentar novamente
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {(trackers ?? []).length === 0 ? (
-        <PresetButtonsCard onPick={(k) => createPreset.mutate(k)} onBlank={openNew} pending={createPreset.isPending} />
+        <SmartOnboarding
+          petName={petName}
+          onConfirm={(items) => createRoutine.mutate(items)}
+          onBlank={openNew}
+          pending={createRoutine.isPending}
+        />
       ) : (
         <>
           <section>
@@ -276,7 +354,7 @@ export function DailyCareTab({ petId }: { petId: string }) {
                     key={t.id}
                     tracker={t}
                     value={todaySums.get(t.id) ?? 0}
-                    onQuickLog={() => quickLog.mutate(t)}
+                    onQuickLog={(value) => quickLog.mutate({ tracker: t, value })}
                     onCustomLog={(payload) => customLog.mutate({ tracker: t, ...payload })}
                     onEdit={() => openEdit(t)}
                     onDelete={() => setToDelete(t)}
@@ -342,7 +420,7 @@ function TrackerCard({
 }: {
   tracker: Tracker;
   value: number;
-  onQuickLog: () => void;
+  onQuickLog: (value: number) => void;
   onCustomLog: (payload: { value: number; notes: string; completedAt: string }) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -394,9 +472,12 @@ function TrackerCard({
       <Progress value={pct} className="mt-4" indicatorStyle={{ backgroundColor: color }} />
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" className="rounded-full" style={{ backgroundColor: color }} onClick={onQuickLog} disabled={quickPending}>
-          {meta.quickLabel}
-        </Button>
+        <QuickLogControl
+          tracker={tracker}
+          onLog={onQuickLog}
+          pending={quickPending}
+          refreshToken={value}
+        />
         <Popover open={customOpen} onOpenChange={setCustomOpen}>
           <PopoverTrigger asChild>
             <Button size="sm" variant="outline" className="rounded-full">Registro personalizado</Button>
@@ -479,9 +560,12 @@ function TrackerFormDialog({
     onSuccess: () => {
       toast.success(editing ? "Tracker atualizado" : "Tracker criado");
       qc.invalidateQueries({ queryKey: ["trackers", petId] });
+      qc.invalidateQueries({ queryKey: ["today-care-overview"] });
+      qc.invalidateQueries({ queryKey: ["home-agenda"] });
+      qc.invalidateQueries({ queryKey: ["health-timeline", petId] });
       onOpenChange(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: save tracker failed", e, editing ? "Não foi possível salvar as alterações do tracker." : "Não foi possível criar o tracker.")),
   });
 
   return (
@@ -578,30 +662,217 @@ function TrackerFormDialog({
 
 /* -------------------- Presets (empty state) -------------------- */
 
-function PresetButtonsCard({
-  onPick,
+/* -------------------- Smart onboarding wizard -------------------- */
+
+const SPECIES_ICONS: Record<SpeciesPresetKey, LucideIcon> = {
+  dog: Dog,
+  cat: Cat,
+  bird: Bird,
+  rabbit: Rabbit,
+  other: HelpCircle,
+};
+
+const WIZARD_STEPS = ["species", "age", "size", "lifestyle", "review"] as const;
+type WizardStep = (typeof WIZARD_STEPS)[number];
+
+function SmartOnboarding({
+  petName,
+  onConfirm,
   onBlank,
   pending,
 }: {
-  onPick: (k: SpeciesPresetKey) => void;
+  petName?: string;
+  onConfirm: (items: RoutineDraftItem[]) => void;
   onBlank: () => void;
   pending: boolean;
 }) {
+  const [stepIndex, setStepIndex] = useState(0);
+  const [species, setSpecies] = useState<SpeciesPresetKey | null>(null);
+  const [age, setAge] = useState<PetAgeGroup | null>(null);
+  const [size, setSize] = useState<PetSize | null>(null);
+  const [lifestyle, setLifestyle] = useState<PetLifestyle | null>(null);
+  const [draft, setDraft] = useState<RoutineDraftItem[]>([]);
+
+  const step: WizardStep = WIZARD_STEPS[stepIndex];
+  const name = petName || "seu pet";
+
+  const goNext = () => setStepIndex((i) => Math.min(i + 1, WIZARD_STEPS.length - 1));
+  const goBack = () => setStepIndex((i) => Math.max(i - 1, 0));
+
+  const finishQuestions = (finalLifestyle: PetLifestyle) => {
+    if (!species || !age || !size) return;
+    setDraft(buildSmartRoutine({ species, age, size, lifestyle: finalLifestyle }));
+    goNext();
+  };
+
+  const updateDraftTarget = (key: string, value: number) => {
+    setDraft((prev) => prev.map((d) => (d.key === key ? { ...d, target_per_day: Math.max(1, value) } : d)));
+  };
+  const removeDraftItem = (key: string) => setDraft((prev) => prev.filter((d) => d.key !== key));
+
   return (
-    <section className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
-      <h3 className="text-lg font-semibold">Comece o acompanhamento diário</h3>
-      <p className="mt-1 text-sm text-muted-foreground">Escolha um ponto de partida — você pode ajustar tudo depois.</p>
-      <div className="mt-5 flex flex-wrap justify-center gap-2">
-        {(Object.keys(SPECIES_PRESETS) as SpeciesPresetKey[]).map((k) => (
-          <Button key={k} variant="outline" className="rounded-full" onClick={() => onPick(k)} disabled={pending}>
-            {SPECIES_PRESETS[k].label}
-          </Button>
-        ))}
-        <Button variant="secondary" className="rounded-full" onClick={onBlank}>
-          <Plus className="mr-2 h-4 w-4" /> Personalizado
-        </Button>
-      </div>
+    <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/5 to-card p-8">
+      {step !== "review" && (
+        <div className="mb-6 flex items-center gap-1.5">
+          {WIZARD_STEPS.slice(0, 4).map((s, i) => (
+            <span key={s} className={`h-1.5 flex-1 rounded-full ${i <= stepIndex ? "bg-primary" : "bg-border"}`} />
+          ))}
+        </div>
+      )}
+
+      {step === "species" && (
+        <WizardQuestion title={`Que tipo de pet é ${name}?`} subtitle="Vamos preparar uma rotina de cuidados sob medida.">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {(Object.keys(SPECIES_PRESETS) as SpeciesPresetKey[]).map((k) => {
+              const Icon = SPECIES_ICONS[k];
+              return (
+                <WizardOption key={k} icon={Icon} label={SPECIES_PRESETS[k].label} selected={species === k} onClick={() => { setSpecies(k); goNext(); }} />
+              );
+            })}
+          </div>
+          <button onClick={onBlank} className="mt-6 text-sm text-muted-foreground underline-offset-2 hover:underline">
+            Prefiro montar do zero
+          </button>
+        </WizardQuestion>
+      )}
+
+      {step === "age" && (
+        <WizardQuestion title="Qual a idade?" onBack={goBack}>
+          <div className="grid grid-cols-3 gap-3">
+            {AGE_OPTIONS.map((o) => (
+              <WizardOption key={o.value} label={o.label} selected={age === o.value} onClick={() => { setAge(o.value); goNext(); }} />
+            ))}
+          </div>
+        </WizardQuestion>
+      )}
+
+      {step === "size" && (
+        <WizardQuestion title="Qual o porte?" onBack={goBack}>
+          <div className="grid grid-cols-3 gap-3">
+            {SIZE_OPTIONS.map((o) => (
+              <WizardOption key={o.value} label={o.label} selected={size === o.value} onClick={() => { setSize(o.value); goNext(); }} />
+            ))}
+          </div>
+        </WizardQuestion>
+      )}
+
+      {step === "lifestyle" && (
+        <WizardQuestion title="Como é a rotina?" onBack={goBack}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {LIFESTYLE_OPTIONS.map((o) => (
+              <WizardOption
+                key={o.value}
+                label={o.label}
+                selected={lifestyle === o.value}
+                onClick={() => { setLifestyle(o.value); finishQuestions(o.value); }}
+              />
+            ))}
+          </div>
+        </WizardQuestion>
+      )}
+
+      {step === "review" && (
+        <div>
+          <div className="flex items-center gap-2 text-primary">
+            <Sparkles className="h-5 w-5" />
+            <p className="text-sm font-semibold uppercase tracking-wide">Plano pronto</p>
+          </div>
+          <h3 className="mt-1 text-xl font-bold">Preparamos este plano de cuidados para {name}.</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Ajuste as metas como quiser antes de confirmar — nada é definitivo.</p>
+
+          <div className="mt-5 space-y-2">
+            {draft.map((item) => {
+              const meta = CATEGORY_META[item.category];
+              const Icon = meta.icon;
+              return (
+                <div key={item.key} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${meta.color}22`, color: meta.color }}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1 font-medium">{item.title}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={item.target_per_day}
+                      onChange={(e) => updateDraftTarget(item.key, Number(e.target.value) || 1)}
+                      className="h-9 w-16 text-center"
+                    />
+                    <span className="w-20 text-xs text-muted-foreground">{item.unit}/dia</span>
+                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => removeDraftItem(item.key)}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+            {draft.length === 0 && (
+              <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+                Nenhum cuidado no plano. Volte e escolha novamente ou comece do zero.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <Button onClick={() => onConfirm(draft)} disabled={pending || draft.length === 0} className="rounded-full">
+              {pending ? "Criando plano…" : "Confirmar plano"}
+            </Button>
+            <Button variant="ghost" onClick={() => setStepIndex(0)} className="rounded-full">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Recomeçar
+            </Button>
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+function WizardQuestion({
+  title,
+  subtitle,
+  onBack,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      {onBack && (
+        <button onClick={onBack} className="mb-3 flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" /> Voltar
+        </button>
+      )}
+      <h3 className="text-xl font-bold">{title}</h3>
+      {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
+      <div className="mt-5">{children}</div>
+    </div>
+  );
+}
+
+function WizardOption({
+  icon: Icon,
+  label,
+  selected,
+  onClick,
+}: {
+  icon?: LucideIcon;
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-2 rounded-2xl border-2 p-4 text-center transition-all hover:-translate-y-0.5 hover:shadow-md ${
+        selected ? "border-primary bg-primary/5" : "border-border bg-card"
+      }`}
+    >
+      {Icon && <Icon className={`h-6 w-6 ${selected ? "text-primary" : "text-muted-foreground"}`} />}
+      <span className="text-sm font-medium">{label}</span>
+    </button>
   );
 }
 

@@ -26,6 +26,7 @@ import { Route as AdminPetsRouteImport } from './routes/admin/pets'
 import { Route as AdminLostRouteImport } from './routes/admin/lost'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as AuthenticatedVaccinesRouteImport } from './routes/_authenticated/vaccines'
+import { Route as AuthenticatedTodayRouteImport } from './routes/_authenticated/today'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedQrRouteImport } from './routes/_authenticated/qr'
 import { Route as AuthenticatedPetsRouteImport } from './routes/_authenticated/pets'
@@ -119,6 +120,11 @@ const AuthenticatedVaccinesRoute = AuthenticatedVaccinesRouteImport.update({
   path: '/vaccines',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedTodayRoute = AuthenticatedTodayRouteImport.update({
+  id: '/today',
+  path: '/today',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -174,6 +180,7 @@ export interface FileRoutesByFullPath {
   '/pets': typeof AuthenticatedPetsRouteWithChildren
   '/qr': typeof AuthenticatedQrRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/today': typeof AuthenticatedTodayRoute
   '/vaccines': typeof AuthenticatedVaccinesRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/lost': typeof AdminLostRoute
@@ -199,6 +206,7 @@ export interface FileRoutesByTo {
   '/pets': typeof AuthenticatedPetsRouteWithChildren
   '/qr': typeof AuthenticatedQrRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/today': typeof AuthenticatedTodayRoute
   '/vaccines': typeof AuthenticatedVaccinesRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/lost': typeof AdminLostRoute
@@ -227,6 +235,7 @@ export interface FileRoutesById {
   '/_authenticated/pets': typeof AuthenticatedPetsRouteWithChildren
   '/_authenticated/qr': typeof AuthenticatedQrRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/today': typeof AuthenticatedTodayRoute
   '/_authenticated/vaccines': typeof AuthenticatedVaccinesRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/lost': typeof AdminLostRoute
@@ -255,6 +264,7 @@ export interface FileRouteTypes {
     | '/pets'
     | '/qr'
     | '/settings'
+    | '/today'
     | '/vaccines'
     | '/admin/audit'
     | '/admin/lost'
@@ -280,6 +290,7 @@ export interface FileRouteTypes {
     | '/pets'
     | '/qr'
     | '/settings'
+    | '/today'
     | '/vaccines'
     | '/admin/audit'
     | '/admin/lost'
@@ -307,6 +318,7 @@ export interface FileRouteTypes {
     | '/_authenticated/pets'
     | '/_authenticated/qr'
     | '/_authenticated/settings'
+    | '/_authenticated/today'
     | '/_authenticated/vaccines'
     | '/admin/audit'
     | '/admin/lost'
@@ -453,6 +465,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedVaccinesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/today': {
+      id: '/_authenticated/today'
+      path: '/today'
+      fullPath: '/today'
+      preLoaderRoute: typeof AuthenticatedTodayRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
@@ -532,6 +551,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPetsRoute: typeof AuthenticatedPetsRouteWithChildren
   AuthenticatedQrRoute: typeof AuthenticatedQrRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedTodayRoute: typeof AuthenticatedTodayRoute
   AuthenticatedVaccinesRoute: typeof AuthenticatedVaccinesRoute
 }
 
@@ -542,6 +562,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPetsRoute: AuthenticatedPetsRouteWithChildren,
   AuthenticatedQrRoute: AuthenticatedQrRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedTodayRoute: AuthenticatedTodayRoute,
   AuthenticatedVaccinesRoute: AuthenticatedVaccinesRoute,
 }
 

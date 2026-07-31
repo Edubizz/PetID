@@ -1,10 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useHealthTimeline, type HealthTimelinePet, HEALTH_TIMELINE_ENTRIES_WINDOW_DAYS } from "@/hooks/useHealthTimeline";
+import { useQuickLogEntry } from "@/hooks/useQuickLogEntry";
+import { QuickLogControl } from "@/components/pet/QuickLogControl";
 import { computeHealthScore } from "@/lib/health-score";
 import { CATEGORY_META, computeStats, dayKey, todayKey, type TrackerCategory } from "@/lib/daily-care";
 import { formatCurrencyBRL, formatDateTime } from "@/lib/pet-utils";
+import { logAndDescribeError } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +17,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { toast } from "sonner";
 import {
   HeartPulse, Stethoscope, Syringe, Weight, ShieldCheck, ShieldAlert, Gift, CalendarClock,
-  TrendingUp, TrendingDown, Minus, ChevronRight, ListChecks, Sparkles, Dog,
+  TrendingUp, TrendingDown, Minus, ChevronRight, ListChecks, Sparkles, Dog, Flame,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,9 +26,21 @@ type Pet = HealthTimelinePet & {
   lost_since: string | null;
   reward_amount: number | null;
   weight_kg: number | null;
+  photo_url: string | null;
+  breed: string | null;
 };
 
-export function DashboardTab({ pet, onNavigate }: { pet: Pet; onNavigate: (tab: string) => void }) {
+export function DashboardTab({
+  pet,
+  onNavigate,
+  autoOpenAppointment,
+  onConsumeAutoOpen,
+}: {
+  pet: Pet;
+  onNavigate: (tab: string) => void;
+  autoOpenAppointment?: boolean;
+  onConsumeAutoOpen?: () => void;
+}) {
   const { data, isLoading } = useHealthTimeline(pet);
 
   if (isLoading) {
@@ -48,24 +63,35 @@ export function DashboardTab({ pet, onNavigate }: { pet: Pet; onNavigate: (tab: 
   const events = data?.events ?? [];
 
   return (
-    <div className="space-y-4">
-      <HealthScoreCard pet={pet} weightRows={weightRows} vaccineRows={vaccineRows} appointmentRows={appointmentRows} trackerRows={trackerRows} entryRows={entryRows} />
+    <div className="space-y-6">
+      <PetHeroCard
+        pet={pet}
+        weightRows={weightRows}
+        vaccineRows={vaccineRows}
+        appointmentRows={appointmentRows}
+        trackerRows={trackerRows}
+        entryRows={entryRows}
+        onNavigate={onNavigate}
+        autoOpenAppointment={autoOpenAppointment}
+        onConsumeAutoOpen={onConsumeAutoOpen}
+      />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <TodaysCareCard pet={pet} trackerRows={trackerRows} entryRows={entryRows} onNavigate={onNavigate} />
+      <TodaysCareCard pet={pet} trackerRows={trackerRows} entryRows={entryRows} onNavigate={onNavigate} />
+
+      <div className="grid gap-6 lg:grid-cols-2">
         <UpcomingCard appointmentRows={appointmentRows} vaccineRows={vaccineRows} />
         <WeightSummaryCard weightRows={weightRows} />
-        <LostStatusCard pet={pet} onNavigate={onNavigate} />
       </div>
 
-      <RecentTimelineCard events={events} onNavigate={onNavigate} />
-
-      <QuickActionsCard pet={pet} onNavigate={onNavigate} />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <LostStatusCard pet={pet} onNavigate={onNavigate} />
+        <RecentTimelineCard events={events} onNavigate={onNavigate} />
+      </div>
     </div>
   );
 }
 
-/* -------------------- 1. Health Score -------------------- */
+/* -------------------- 1. Hero: photo, mood, score, streak, quick actions -------------------- */
 
 type WeightRow = { weight_kg: number; measured_at: string };
 type VaccineRow = { next_dose: string | null };
@@ -73,13 +99,23 @@ type AppointmentRow = { scheduled_at: string };
 type TrackerRow = { id: string; is_active: boolean; target_per_day: number };
 type EntryRow = { value: number; completed_at: string; trackers: { id: string } | null };
 
-function HealthScoreCard({
+const MOOD_BY_STATUS: Record<string, string> = {
+  excellent: "😄",
+  good: "🙂",
+  attention: "😐",
+  critical: "😟",
+};
+
+function PetHeroCard({
   pet,
   weightRows,
   vaccineRows,
   appointmentRows,
   trackerRows,
   entryRows,
+  onNavigate,
+  autoOpenAppointment,
+  onConsumeAutoOpen,
 }: {
   pet: Pet;
   weightRows: WeightRow[];
@@ -87,15 +123,25 @@ function HealthScoreCard({
   appointmentRows: AppointmentRow[];
   trackerRows: TrackerRow[];
   entryRows: EntryRow[];
+  onNavigate: (tab: string) => void;
+  autoOpenAppointment?: boolean;
+  onConsumeAutoOpen?: () => void;
 }) {
-  const result = useMemo(() => {
+  const [apptOpen, setApptOpen] = useState(false);
+
+  useEffect(() => {
+    if (autoOpenAppointment) {
+      setApptOpen(true);
+      onConsumeAutoOpen?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenAppointment]);
+
+  const { result, streak, todayPct } = useMemo(() => {
     const now = Date.now();
     const activeTrackers = trackerRows.filter((t) => t.is_active);
-    const stats = computeStats(
-      trackerRows,
-      entryRows.map((e) => ({ tracker_id: e.trackers?.id ?? "", value: e.value, completed_at: e.completed_at })),
-      HEALTH_TIMELINE_ENTRIES_WINDOW_DAYS,
-    );
+    const normalizedEntries = entryRows.map((e) => ({ tracker_id: e.trackers?.id ?? "", value: e.value, completed_at: e.completed_at }));
+    const stats = computeStats(trackerRows, normalizedEntries, HEALTH_TIMELINE_ENTRIES_WINDOW_DAYS);
     const overdueVaccineCount = vaccineRows.filter((v) => v.next_dose && new Date(v.next_dose).getTime() < now).length;
     const hasUpcomingAppointment = appointmentRows.some((a) => new Date(a.scheduled_at).getTime() >= now);
     const sortedWeights = [...weightRows].sort((a, b) => new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime());
@@ -104,38 +150,85 @@ function HealthScoreCard({
       ? Math.floor((now - new Date(sortedWeights[0].measured_at).getTime()) / 86400000)
       : null;
 
-    return computeHealthScore({
-      dailyCompletionPct: stats.todayCompletionPct,
-      hasActiveTrackers: activeTrackers.length > 0,
-      overdueVaccineCount,
-      isLost: pet.is_lost,
-      hasWeightHistory,
-      daysSinceLastWeight,
-      hasUpcomingAppointment,
-    });
+    return {
+      result: computeHealthScore({
+        dailyCompletionPct: stats.todayCompletionPct,
+        hasActiveTrackers: activeTrackers.length > 0,
+        overdueVaccineCount,
+        isLost: pet.is_lost,
+        hasWeightHistory,
+        daysSinceLastWeight,
+        hasUpcomingAppointment,
+      }),
+      streak: stats.currentStreak,
+      todayPct: stats.todayCompletionPct,
+    };
   }, [pet.is_lost, weightRows, vaccineRows, appointmentRows, trackerRows, entryRows]);
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-      <div className="flex flex-wrap items-center gap-5">
-        <div
-          className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-2xl font-bold"
-          style={{ backgroundColor: `${result.color}1a`, color: result.color, border: `3px solid ${result.color}` }}
-        >
-          {result.score}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <HeartPulse className="h-4 w-4" style={{ color: result.color }} />
-            <h3 className="text-lg font-semibold">Health Score</h3>
+    <section className="overflow-hidden rounded-3xl border border-border shadow-[var(--shadow-elegant)]" style={{ background: "var(--gradient-hero)" }}>
+      <div className="flex flex-wrap items-center gap-6 p-8">
+        <div className="relative shrink-0">
+          <div className="h-28 w-28 overflow-hidden rounded-3xl bg-secondary shadow-md">
+            {pet.photo_url ? (
+              <img src={pet.photo_url} alt={pet.name} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center" style={{ background: "var(--gradient-brand)" }}>
+                <Dog className="h-10 w-10 text-primary-foreground" />
+              </div>
+            )}
           </div>
-          <p className="mt-0.5 text-sm font-medium" style={{ color: result.color }}>{result.label}</p>
-          <p className="text-xs text-muted-foreground">
-            Calculado a partir de cuidados diários, vacinas, consultas, peso e status de segurança.
-          </p>
+          <span className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-background bg-card text-xl shadow">
+            {MOOD_BY_STATUS[result.status] ?? "🙂"}
+          </span>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h2 className="text-2xl font-bold tracking-tight">{pet.name}</h2>
+          <p className="text-sm text-muted-foreground">{pet.breed || "Sem raça definida"}</p>
+
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            <HeroPill icon={HeartPulse} color={result.color} label={result.label} value={String(result.score)} />
+            <HeroPill icon={Flame} color="#F97316" label="Sequência" value={`${streak} ${streak === 1 ? "dia" : "dias"}`} />
+            <HeroPill icon={ListChecks} color="#0EA5E9" label="Hoje" value={`${todayPct}%`} />
+          </div>
         </div>
       </div>
+
+      <div className="flex flex-wrap gap-2 border-t border-border/60 bg-background/40 px-8 py-4 backdrop-blur-sm">
+        <Button size="sm" variant="outline" className="rounded-full bg-card" onClick={() => onNavigate("health")}>
+          <Weight className="mr-1.5 h-4 w-4" /> Registrar peso
+        </Button>
+        <Button size="sm" variant="outline" className="rounded-full bg-card" onClick={() => setApptOpen(true)}>
+          <CalendarClock className="mr-1.5 h-4 w-4" /> Agendar consulta
+        </Button>
+        <Button size="sm" variant="outline" className="rounded-full bg-card" onClick={() => onNavigate("health")}>
+          <Syringe className="mr-1.5 h-4 w-4" /> Adicionar vacina
+        </Button>
+        <Button size="sm" variant="outline" className="rounded-full bg-card" onClick={() => onNavigate("daily-care")}>
+          <ListChecks className="mr-1.5 h-4 w-4" /> Cuidados diários
+        </Button>
+        <Button size="sm" variant="outline" className="rounded-full bg-card text-destructive" onClick={() => onNavigate("lost")}>
+          <ShieldAlert className="mr-1.5 h-4 w-4" /> Modo perdido
+        </Button>
+      </div>
+
+      <AddAppointmentDialog petId={pet.id} open={apptOpen} onOpenChange={setApptOpen} />
     </section>
+  );
+}
+
+function HeroPill({ icon: Icon, color, label, value }: { icon: LucideIcon; color: string; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-2xl border border-border bg-card/80 px-3.5 py-2 shadow-sm backdrop-blur-sm">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${color}1a`, color }}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-bold leading-tight">{value}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{label}</p>
+      </div>
+    </div>
   );
 }
 
@@ -152,8 +245,6 @@ function TodaysCareCard({
   entryRows: EntryRow[];
   onNavigate: (tab: string) => void;
 }) {
-  const qc = useQueryClient();
-
   const todaySums = useMemo(() => {
     const key = todayKey();
     const map = new Map<string, number>();
@@ -173,23 +264,13 @@ function TodaysCareCard({
     ? Math.round((active.reduce((sum, t) => sum + Math.min(1, (todaySums.get(t.id) ?? 0) / (t.target_per_day || 1)), 0) / active.length) * 100)
     : 0;
 
-  const quickLog = useMutation({
-    mutationFn: async (tracker: { id: string; category: TrackerCategory }) => {
-      const { error } = await supabase.from("tracker_entries").insert({
-        tracker_id: tracker.id,
-        pet_id: pet.id,
-        value: CATEGORY_META[tracker.category].quickValue,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Registrado!");
-      qc.invalidateQueries({ queryKey: ["health-timeline", pet.id] });
-      qc.invalidateQueries({ queryKey: ["tracker-entries", pet.id] });
-      qc.invalidateQueries({ queryKey: ["trackers", pet.id] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const quickLog = useQuickLogEntry(pet.id, [
+    ["health-timeline", pet.id],
+    ["tracker-entries", pet.id],
+    ["trackers", pet.id],
+    ["today-care-overview"],
+    ["home-agenda"],
+  ]);
 
   return (
     <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
@@ -219,20 +300,15 @@ function TodaysCareCard({
             {active.map((t) => {
               const meta = CATEGORY_META[t.category];
               const Icon = meta.icon;
-              const color = t.color || meta.color;
-              const done = (todaySums.get(t.id) ?? 0) >= t.target_per_day;
               return (
-                <Button
+                <QuickLogControl
                   key={t.id}
-                  size="sm"
-                  variant={done ? "outline" : "default"}
-                  className="rounded-full"
-                  style={done ? undefined : { backgroundColor: color }}
-                  onClick={() => quickLog.mutate(t)}
-                  disabled={quickLog.isPending}
-                >
-                  <Icon className="mr-1.5 h-3.5 w-3.5" /> {t.title}
-                </Button>
+                  tracker={t}
+                  icon={<Icon className="mr-1.5 h-3.5 w-3.5" />}
+                  onLog={(value) => quickLog.mutate({ tracker: t, value })}
+                  pending={quickLog.isPending}
+                  refreshToken={todaySums.get(t.id) ?? 0}
+                />
               );
             })}
           </div>
@@ -441,36 +517,7 @@ function RecentTimelineCard({
   );
 }
 
-/* -------------------- 7. Quick Actions -------------------- */
-
-function QuickActionsCard({ pet, onNavigate }: { pet: Pet; onNavigate: (tab: string) => void }) {
-  const [apptOpen, setApptOpen] = useState(false);
-
-  return (
-    <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-      <h3 className="flex items-center gap-2 text-lg font-semibold"><Dog className="h-5 w-5" /> Ações rápidas</h3>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" className="rounded-full" onClick={() => onNavigate("health")}>
-          <Weight className="mr-1.5 h-4 w-4" /> Registrar peso
-        </Button>
-        <Button size="sm" variant="outline" className="rounded-full" onClick={() => setApptOpen(true)}>
-          <CalendarClock className="mr-1.5 h-4 w-4" /> Agendar consulta
-        </Button>
-        <Button size="sm" variant="outline" className="rounded-full" onClick={() => onNavigate("health")}>
-          <Syringe className="mr-1.5 h-4 w-4" /> Adicionar vacina
-        </Button>
-        <Button size="sm" variant="outline" className="rounded-full" onClick={() => onNavigate("daily-care")}>
-          <ListChecks className="mr-1.5 h-4 w-4" /> Cuidados diários
-        </Button>
-        <Button size="sm" variant="outline" className="rounded-full text-destructive" onClick={() => onNavigate("lost")}>
-          <ShieldAlert className="mr-1.5 h-4 w-4" /> Ativar modo perdido
-        </Button>
-      </div>
-
-      <AddAppointmentDialog petId={pet.id} open={apptOpen} onOpenChange={setApptOpen} />
-    </section>
-  );
-}
+/* -------------------- Add appointment dialog (used by hero quick actions) -------------------- */
 
 function AddAppointmentDialog({ petId, open, onOpenChange }: { petId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const qc = useQueryClient();
@@ -492,10 +539,11 @@ function AddAppointmentDialog({ petId, open, onOpenChange }: { petId: string; op
       toast.success("Consulta agendada");
       qc.invalidateQueries({ queryKey: ["health-timeline", petId] });
       qc.invalidateQueries({ queryKey: ["pet-indicators", petId] });
+      qc.invalidateQueries({ queryKey: ["home-agenda"] });
       onOpenChange(false);
       setForm({ reason: "", scheduled_at: "", vet_name: "", clinic: "" });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DashboardTab: schedule appointment failed", e, "Não foi possível agendar a consulta.")),
   });
 
   return (

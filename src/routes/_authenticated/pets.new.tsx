@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
+import { logAndDescribeError } from "@/lib/errors";
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { PetColorField, PetMicrochipField, PetSexField } from "@/components/PetFormFields";
 import {
@@ -24,6 +26,7 @@ export const Route = createFileRoute("/_authenticated/pets/new")({
 
 function NewPet() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -45,7 +48,10 @@ function NewPet() {
     if (!form.name.trim()) return toast.error("Informe o nome do pet.");
     setLoading(true);
     const { data: user } = await supabase.auth.getUser();
-    if (!user.user) { setLoading(false); return; }
+    if (!user.user) {
+      setLoading(false);
+      return toast.error("Sua sessão expirou. Faça login novamente.");
+    }
     const { data, error } = await supabase
       .from("pets")
       .insert({
@@ -64,8 +70,13 @@ function NewPet() {
       .select()
       .single();
     setLoading(false);
-    if (error) return toast.error(`Erro ao cadastrar: ${error.message}`);
+    if (error) return toast.error(logAndDescribeError("pets.new: create pet failed", error, "Não foi possível cadastrar o pet."));
     toast.success("Pet cadastrado!");
+    // "Meus Pets", Dashboard and Today were fetched before this pet existed —
+    // without this they'd keep missing it until their 60s staleTime expires.
+    qc.invalidateQueries({ queryKey: ["pets"] });
+    qc.invalidateQueries({ queryKey: ["today-care-overview"] });
+    qc.invalidateQueries({ queryKey: ["pets-quick-picker"] });
     navigate({ to: "/pets/$id", params: { id: data.id } });
   };
 

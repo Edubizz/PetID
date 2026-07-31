@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, MessageCircle, MapPin, Gift, Phone, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrencyBRL, formatDateTime } from "@/lib/pet-utils";
+import { logAndDescribeError } from "@/lib/errors";
 
 type Pet = {
   id: string;
@@ -68,7 +69,7 @@ export function LostModeTab({ pet, onToggleLost }: { pet: Pet; onToggleLost: () 
       toast.success("Detalhes de emergência atualizados");
       qc.invalidateQueries({ queryKey: ["pet", pet.id] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("LostModeTab: save details failed", e, "Não foi possível salvar os detalhes de emergência.")),
   });
 
   const activate = useMutation({
@@ -95,9 +96,16 @@ export function LostModeTab({ pet, onToggleLost }: { pet: Pet; onToggleLost: () 
     },
     onSuccess: () => {
       toast.success("Modo perdido ativado");
+      // Same cross-page fan-out as the header's "Marcar como encontrado" toggle
+      // (pets.$id.tsx) — Dashboard/Today alerts and this pet's Timeline all
+      // depend on is_lost / lost_mode_events and must not serve stale data.
       qc.invalidateQueries({ queryKey: ["pet", pet.id] });
+      qc.invalidateQueries({ queryKey: ["pets"] });
+      qc.invalidateQueries({ queryKey: ["today-care-overview"] });
+      qc.invalidateQueries({ queryKey: ["home-agenda"] });
+      qc.invalidateQueries({ queryKey: ["health-timeline", pet.id] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("LostModeTab: activate failed", e, "Não foi possível ativar o modo perdido.")),
   });
 
   const { data: sightings, isLoading: loadingSightings } = useQuery({

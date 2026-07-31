@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Pencil, Plus, Syringe, Trash2, Weight } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/pet-utils";
+import { logAndDescribeError } from "@/lib/errors";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 type Pet = {
@@ -26,12 +27,25 @@ type Pet = {
   show_medical_public: boolean;
 };
 
-export function HealthTab({ pet }: { pet: Pet }) {
+export function HealthTab({
+  pet,
+  autoOpen,
+  onConsumeAutoOpen,
+}: {
+  pet: Pet;
+  autoOpen?: "weight" | "vaccine";
+  onConsumeAutoOpen?: () => void;
+}) {
   return (
     <div className="space-y-6">
       <MedicalCard pet={pet} />
-      <WeightSection petId={pet.id} currentWeight={pet.weight_kg} />
-      <VaccinesSection petId={pet.id} />
+      <WeightSection
+        petId={pet.id}
+        currentWeight={pet.weight_kg}
+        autoOpen={autoOpen === "weight"}
+        onConsumeAutoOpen={onConsumeAutoOpen}
+      />
+      <VaccinesSection petId={pet.id} autoOpen={autoOpen === "vaccine"} onConsumeAutoOpen={onConsumeAutoOpen} />
     </div>
   );
 }
@@ -61,7 +75,7 @@ function MedicalCard({ pet }: { pet: Pet }) {
       qc.invalidateQueries({ queryKey: ["pet", pet.id] });
       setOpen(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("HealthTab: save medical info failed", e, "Não foi possível salvar as informações médicas.")),
   });
 
   return (
@@ -128,10 +142,28 @@ function Info({ label, value, wide }: { label: string; value: string | null; wid
 
 /* -------------------- Weight -------------------- */
 
-function WeightSection({ petId, currentWeight }: { petId: string; currentWeight: number | null }) {
+function WeightSection({
+  petId,
+  currentWeight,
+  autoOpen,
+  onConsumeAutoOpen,
+}: {
+  petId: string;
+  currentWeight: number | null;
+  autoOpen?: boolean;
+  onConsumeAutoOpen?: () => void;
+}) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ weight_kg: "", measured_at: new Date().toISOString().slice(0, 10), notes: "" });
+
+  useEffect(() => {
+    if (autoOpen) {
+      setOpen(true);
+      onConsumeAutoOpen?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["weights", petId],
@@ -156,10 +188,15 @@ function WeightSection({ petId, currentWeight }: { petId: string; currentWeight:
       toast.success("Peso registrado");
       qc.invalidateQueries({ queryKey: ["weights", petId] });
       qc.invalidateQueries({ queryKey: ["pet", petId] });
+      // Health Score / weight sparkline (Pet Dashboard tab + Timeline) and the
+      // cross-pet Dashboard/Today "stale weight" alert all read this data.
+      qc.invalidateQueries({ queryKey: ["health-timeline", petId] });
+      qc.invalidateQueries({ queryKey: ["home-agenda"] });
+      qc.invalidateQueries({ queryKey: ["pet-profile-meta", petId] });
       setOpen(false);
       setForm({ weight_kg: "", measured_at: new Date().toISOString().slice(0, 10), notes: "" });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("HealthTab: register weight failed", e, "Não foi possível registrar o peso.")),
   });
 
   return (
@@ -224,7 +261,15 @@ type Vaccine = {
   notes: string | null;
 };
 
-function VaccinesSection({ petId }: { petId: string }) {
+function VaccinesSection({
+  petId,
+  autoOpen,
+  onConsumeAutoOpen,
+}: {
+  petId: string;
+  autoOpen?: boolean;
+  onConsumeAutoOpen?: () => void;
+}) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Vaccine | null>(null);
@@ -245,6 +290,15 @@ function VaccinesSection({ petId }: { petId: string }) {
     setForm({ name: "", applied_at: new Date().toISOString().slice(0, 10), next_dose: "", vet_name: "", notes: "" });
     setOpen(true);
   };
+
+  useEffect(() => {
+    if (autoOpen) {
+      openNew();
+      onConsumeAutoOpen?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
+
   const openEdit = (v: Vaccine) => {
     setEditing(v);
     setForm({
@@ -276,10 +330,17 @@ function VaccinesSection({ petId }: { petId: string }) {
     onSuccess: () => {
       toast.success(editing ? "Vacina atualizada" : "Vacina adicionada");
       qc.invalidateQueries({ queryKey: ["vaccines", petId] });
-      qc.invalidateQueries({ queryKey: ["timeline", petId] });
+      // Was ["timeline", petId] — useHealthTimeline actually caches under
+      // ["health-timeline", petId], so this invalidation was a no-op and the
+      // Timeline tab / Health Score kept showing the vaccine list from before
+      // the edit until the 60s staleTime window expired.
+      qc.invalidateQueries({ queryKey: ["health-timeline", petId] });
+      qc.invalidateQueries({ queryKey: ["pet-indicators", petId] });
+      qc.invalidateQueries({ queryKey: ["pet-profile-meta", petId] });
+      qc.invalidateQueries({ queryKey: ["home-agenda"] });
       setOpen(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("HealthTab: save vaccine failed", e, "Não foi possível salvar a vacina.")),
   });
 
   const remove = useMutation({
@@ -290,10 +351,13 @@ function VaccinesSection({ petId }: { petId: string }) {
     onSuccess: () => {
       toast.success("Vacina removida");
       qc.invalidateQueries({ queryKey: ["vaccines", petId] });
-      qc.invalidateQueries({ queryKey: ["timeline", petId] });
+      qc.invalidateQueries({ queryKey: ["health-timeline", petId] });
+      qc.invalidateQueries({ queryKey: ["pet-indicators", petId] });
+      qc.invalidateQueries({ queryKey: ["pet-profile-meta", petId] });
+      qc.invalidateQueries({ queryKey: ["home-agenda"] });
       setToDelete(null);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(logAndDescribeError("HealthTab: remove vaccine failed", e, "Não foi possível remover a vacina.")),
   });
 
   return (

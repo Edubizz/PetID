@@ -1,5 +1,5 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, Dog, Syringe, Calendar, FileText, QrCode, Settings, LogOut, Shield } from "lucide-react";
+import { Home, Heart, PawPrint, Settings, LogOut, Shield } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -19,13 +19,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 const items = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Meus Pets", url: "/pets", icon: Dog },
-  { title: "Vacinas", url: "/vaccines", icon: Syringe },
-  { title: "Consultas", url: "/appointments", icon: Calendar },
-  { title: "Documentos", url: "/documents", icon: FileText },
-  { title: "QR Code", url: "/qr", icon: QrCode },
-  { title: "Configurações", url: "/settings", icon: Settings },
+  { title: "Dashboard", url: "/dashboard", icon: Home },
+  { title: "Hoje", url: "/today", icon: Heart },
+  { title: "Meus Pets", url: "/pets", icon: PawPrint },
 ];
 
 export function AppSidebar() {
@@ -86,6 +82,14 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={pathname.startsWith("/settings")}>
+              <Link to="/settings">
+                <Settings className="h-4 w-4" />
+                <span>Configurações</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={handleSignOut}>
               <LogOut className="h-4 w-4" />

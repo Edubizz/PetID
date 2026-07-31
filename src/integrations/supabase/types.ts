@@ -252,6 +252,7 @@ export type Database = {
           owner_id: string
           pedigree: string | null
           photo_url: string | null
+          profile_extras: Json
           public_slug: string
           reward_amount: number | null
           secondary_contact_name: string | null
@@ -282,6 +283,7 @@ export type Database = {
           owner_id: string
           pedigree?: string | null
           photo_url?: string | null
+          profile_extras?: Json
           public_slug?: string
           reward_amount?: number | null
           secondary_contact_name?: string | null
@@ -312,6 +314,7 @@ export type Database = {
           owner_id?: string
           pedigree?: string | null
           photo_url?: string | null
+          profile_extras?: Json
           public_slug?: string
           reward_amount?: number | null
           secondary_contact_name?: string | null

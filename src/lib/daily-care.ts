@@ -47,6 +47,116 @@ export const CATEGORY_OPTIONS: { value: TrackerCategory; label: string }[] = (
   Object.keys(CATEGORY_META) as TrackerCategory[]
 ).map((value) => ({ value, label: CATEGORY_META[value].label }));
 
+/* -------------------- Smart quick-log (quantity vs count) -------------------- */
+
+/** Units that mean "one event" — always log +1, no amount picker. */
+const COUNT_UNITS = new Set([
+  "refeições", "refeicoes", "meals", "doses", "passeios", "walks",
+  "vezes", "sessões", "sessoes", "sessions", "trocas", "times",
+]);
+
+/**
+ * Categories that should stay one-tap forever (meals / walks / medication),
+ * regardless of whatever unit string the owner typed.
+ */
+const COUNT_CATEGORIES = new Set<TrackerCategory>(["food", "medication", "walk"]);
+
+/** Categories that always use the quantity picker. */
+const QUANTITY_CATEGORIES = new Set<TrackerCategory>(["water", "exercise"]);
+
+const QUANTITY_UNIT_RE = /^(ml|l|g|kg|min|mins?|minutes?|minutos?|km|m|oz|lb|lbs|cal|kcal|h|hrs?|horas?)$/i;
+
+export function isQuantityUnit(unit: string | null | undefined): boolean {
+  if (!unit) return false;
+  const u = unit.trim().toLowerCase();
+  if (!u || COUNT_UNITS.has(u)) return false;
+  return QUANTITY_UNIT_RE.test(u);
+}
+
+/**
+ * Whether this tracker should show the amount picker beside the quick-log
+ * button. Count trackers (meals, walks, medication, "vezes", …) stay one-tap.
+ */
+export function usesQuantityQuickLog(
+  category: TrackerCategory,
+  unit: string | null | undefined,
+): boolean {
+  if (COUNT_CATEGORIES.has(category)) return false;
+  if (QUANTITY_CATEGORIES.has(category)) return true;
+  return isQuantityUnit(unit ?? CATEGORY_META[category].unit);
+}
+
+/** Preset amounts for the quantity dropdown, keyed by unit family. */
+export function getQuantityPresets(unit: string | null | undefined): number[] {
+  const u = (unit ?? "").trim().toLowerCase();
+  if (u === "ml") return [100, 150, 250, 300, 400, 500];
+  if (u === "l" || u === "litros" || u === "litro") return [0.25, 0.5, 1, 1.5, 2];
+  if (u === "min" || u === "mins" || u === "minute" || u === "minutes" || u === "minuto" || u === "minutos") {
+    return [10, 15, 20, 30, 45, 60];
+  }
+  if (u === "g" || u === "gramas" || u === "grams") return [50, 100, 150, 200, 250, 500];
+  if (u === "kg") return [0.5, 1, 1.5, 2, 2.5, 5];
+  if (u === "km") return [0.5, 1, 2, 3, 5, 10];
+  if (u === "m" || u === "metros") return [100, 250, 500, 1000, 2000];
+  // Generic numeric unit — a sensible ladder around the category default.
+  return [1, 2, 5, 10, 15, 20];
+}
+
+const LAST_QUICK_VALUE_KEY = "petid:quick-log-last";
+
+function readLastQuickMap(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(LAST_QUICK_VALUE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) out[k] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Last amount the owner logged for this tracker (client-only, no migration). */
+export function getLastQuickValue(trackerId: string, fallback: number): number {
+  const n = readLastQuickMap()[trackerId];
+  return n && n > 0 ? n : fallback;
+}
+
+export function setLastQuickValue(trackerId: string, value: number): void {
+  if (typeof window === "undefined") return;
+  if (!Number.isFinite(value) || value <= 0) return;
+  try {
+    const map = readLastQuickMap();
+    map[trackerId] = value;
+    localStorage.setItem(LAST_QUICK_VALUE_KEY, JSON.stringify(map));
+  } catch {
+    // private mode / quota — ignore; logging still works with the default
+  }
+}
+
+/** Value the primary quick-log button should use right now. */
+export function resolveQuickValue(
+  trackerId: string,
+  category: TrackerCategory,
+  unit: string | null | undefined,
+): number {
+  const fallback = CATEGORY_META[category].quickValue;
+  if (!usesQuantityQuickLog(category, unit)) return fallback;
+  return getLastQuickValue(trackerId, fallback);
+}
+
+export function formatQuickLogLabel(value: number, unit: string | null | undefined): string {
+  const u = (unit ?? "").trim();
+  // Avoid "1.5 km" becoming "1,5" inconsistently — keep a short decimal.
+  const n = Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
+  return u ? `+${n} ${u}` : `+${n}`;
+}
+
 export type TrackerPreset = {
   title: string;
   category: TrackerCategory;
@@ -54,7 +164,7 @@ export type TrackerPreset = {
   unit: string;
 };
 
-export type SpeciesPresetKey = "dog" | "cat" | "bird" | "rabbit";
+export type SpeciesPresetKey = "dog" | "cat" | "bird" | "rabbit" | "other";
 
 export const SPECIES_PRESETS: Record<SpeciesPresetKey, { label: string; trackers: TrackerPreset[] }> = {
   dog: {
@@ -91,7 +201,96 @@ export const SPECIES_PRESETS: Record<SpeciesPresetKey, { label: string; trackers
       { title: "Tempo livre", category: "exercise", target_per_day: 30, unit: "min" },
     ],
   },
+  other: {
+    label: "Outro",
+    trackers: [
+      { title: "Alimentação", category: "food", target_per_day: 2, unit: "refeições" },
+      { title: "Água", category: "water", target_per_day: 2, unit: "trocas" },
+      { title: "Interação / Exercício", category: "exercise", target_per_day: 1, unit: "vezes" },
+    ],
+  },
 };
+
+/* -------------------- Smart onboarding routine -------------------- */
+
+export type PetAgeGroup = "puppy" | "adult" | "senior";
+export type PetSize = "small" | "medium" | "large";
+export type PetLifestyle = "apartment" | "house" | "active" | "normal" | "senior";
+
+export const AGE_OPTIONS: { value: PetAgeGroup; label: string }[] = [
+  { value: "puppy", label: "Filhote" },
+  { value: "adult", label: "Adulto" },
+  { value: "senior", label: "Idoso" },
+];
+
+export const SIZE_OPTIONS: { value: PetSize; label: string }[] = [
+  { value: "small", label: "Pequeno" },
+  { value: "medium", label: "Médio" },
+  { value: "large", label: "Grande" },
+];
+
+export const LIFESTYLE_OPTIONS: { value: PetLifestyle; label: string }[] = [
+  { value: "apartment", label: "Apartamento" },
+  { value: "house", label: "Casa com quintal" },
+  { value: "active", label: "Muito ativo" },
+  { value: "normal", label: "Rotina tranquila" },
+  { value: "senior", label: "Ritmo mais calmo" },
+];
+
+export type RoutineDraftItem = {
+  key: string;
+  title: string;
+  category: TrackerCategory;
+  target_per_day: number;
+  unit: string;
+};
+
+/**
+ * Turns the 4-question onboarding into a starting set of trackers. Pure
+ * client-side heuristics on top of `SPECIES_PRESETS` — no schema change, and
+ * the result feeds the exact same `trackers` insert the manual "+ Novo
+ * tracker" flow already uses, so nothing forces the user's hand: every value
+ * is editable before (and after) creation.
+ */
+export function buildSmartRoutine(opts: {
+  species: SpeciesPresetKey;
+  age: PetAgeGroup;
+  size: PetSize;
+  lifestyle: PetLifestyle;
+}): RoutineDraftItem[] {
+  const base = SPECIES_PRESETS[opts.species].trackers;
+
+  return base.map((t, i) => {
+    let target = t.target_per_day;
+
+    if (t.category === "walk" || t.category === "exercise") {
+      if (opts.lifestyle === "active") target = Math.ceil(target * 1.5);
+      if (opts.age === "senior" || opts.lifestyle === "senior") target = Math.max(1, Math.round(target * 0.7));
+      if (opts.age === "puppy") target += 1;
+    }
+
+    if (t.category === "food" && opts.age === "puppy") {
+      target += 1;
+    }
+
+    if (t.category === "water" && t.unit === "ml") {
+      const sizeMult = opts.size === "small" ? 0.6 : opts.size === "large" ? 1.6 : 1;
+      target = Math.max(50, Math.round((target * sizeMult) / 50) * 50);
+    }
+
+    if (t.category === "bathroom" && opts.age === "puppy") {
+      target += 2;
+    }
+
+    return {
+      key: `${t.category}-${i}`,
+      title: t.title,
+      category: t.category,
+      target_per_day: Math.max(1, target),
+      unit: t.unit,
+    };
+  });
+}
 
 function toDate(value: Date | string): Date {
   return typeof value === "string" ? new Date(value) : value;
