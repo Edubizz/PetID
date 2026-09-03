@@ -1,8 +1,10 @@
-import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Dog, Plus, QrCode } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { Dog, Plus, QrCode, RefreshCw } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/pets")({
   component: PetsRoute,
@@ -15,7 +17,8 @@ function PetsRoute() {
 }
 
 function PetsList() {
-  const { data: pets = [] } = useQuery({
+  const navigate = useNavigate();
+  const { data: pets = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["pets"],
     queryFn: async () => {
       const { data: userRes } = await supabase.auth.getUser();
@@ -32,21 +35,51 @@ function PetsList() {
   });
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Meus Pets</h1>
-          <p className="mt-1 text-muted-foreground">Todos os pets sob seus cuidados.</p>
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Meus Pets</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Todos os pets sob seus cuidados.</p>
         </div>
-        <Button asChild className="rounded-full">
-          <Link to="/pets/new"><Plus className="mr-2 h-4 w-4" />Adicionar pet</Link>
+        <Button asChild className="min-h-11 rounded-full">
+          <Link to="/pets/new">
+            <Plus className="mr-2 h-4 w-4" />
+            Adicionar pet
+          </Link>
         </Button>
       </div>
 
-      {pets.length === 0 ? (
-        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card p-12 text-center">
-          <Dog className="mx-auto h-10 w-10 text-muted-foreground" />
-          <p className="mt-4 font-medium">Nenhum pet cadastrado</p>
+      {isLoading ? (
+        <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3" role="status" aria-live="polite">
+          <span className="sr-only">Carregando pets…</span>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="aspect-[4/5] w-full rounded-2xl" />
+          ))}
+        </div>
+      ) : isError ? (
+        <div className="mt-8 rounded-2xl border border-border bg-card p-8 text-center">
+          <p className="font-medium">Não foi possível carregar seus pets</p>
+          <p className="mt-1 text-sm text-muted-foreground">Verifique a conexão e tente novamente.</p>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 min-h-11 rounded-full"
+            disabled={isFetching}
+            onClick={() => refetch()}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Tentar novamente
+          </Button>
+        </div>
+      ) : pets.length === 0 ? (
+        <div className="mt-8">
+          <EmptyState
+            icon={Dog}
+            title="Nenhum pet cadastrado"
+            description="Crie o perfil digital do seu pet para gerar o QR Code e acompanhar rotina e saúde."
+            action={{ label: "Adicionar pet", icon: Plus, onClick: () => navigate({ to: "/pets/new" }) }}
+            className="p-12"
+          />
         </div>
       ) : (
         <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -67,7 +100,10 @@ function PetsList() {
                     className="h-full w-full object-cover transition-transform group-hover:scale-105"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center" style={{ background: "var(--gradient-brand)" }}>
+                  <div
+                    className="flex h-full w-full items-center justify-center"
+                    style={{ background: "var(--gradient-brand)" }}
+                  >
                     <Dog className="h-16 w-16 text-primary-foreground/80" />
                   </div>
                 )}
@@ -76,7 +112,9 @@ function PetsList() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">{p.name}</h3>
                   {p.is_lost && (
-                    <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">Perdido</span>
+                    <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                      Perdido
+                    </span>
                   )}
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">

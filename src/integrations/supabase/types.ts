@@ -85,6 +85,186 @@ export type Database = {
           },
         ]
       }
+      billing_promo_config: {
+        Row: {
+          active: boolean
+          ends_at: string | null
+          id: string
+          max_subscriptions: number | null
+          subscriptions_redeemed: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          ends_at?: string | null
+          id?: string
+          max_subscriptions?: number | null
+          subscriptions_redeemed?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          ends_at?: string | null
+          id?: string
+          max_subscriptions?: number | null
+          subscriptions_redeemed?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      billing_stripe_events: {
+        Row: {
+          event_id: string
+          processed_at: string
+          type: string
+        }
+        Insert: {
+          event_id: string
+          processed_at?: string
+          type: string
+        }
+        Update: {
+          event_id?: string
+          processed_at?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      billing_subscriptions: {
+        Row: {
+          billing_interval: string | null
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          founder_offer: boolean
+          plan: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_price_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          billing_interval?: string | null
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          founder_offer?: boolean
+          plan?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_price_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          billing_interval?: string | null
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          founder_offer?: boolean
+          plan?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_price_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      physical_tag_batches: {
+        Row: {
+          batch_code: string
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          quantity: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          batch_code: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          quantity: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          batch_code?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          quantity?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      physical_tags: {
+        Row: {
+          activated_at: string | null
+          activated_by: string | null
+          activation_code_hash: string
+          batch_id: string
+          created_at: string
+          human_serial: string
+          id: string
+          pet_id: string | null
+          public_token: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          activated_at?: string | null
+          activated_by?: string | null
+          activation_code_hash: string
+          batch_id: string
+          created_at?: string
+          human_serial: string
+          id?: string
+          pet_id?: string | null
+          public_token: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          activated_at?: string | null
+          activated_by?: string | null
+          activation_code_hash?: string
+          batch_id?: string
+          created_at?: string
+          human_serial?: string
+          id?: string
+          pet_id?: string | null
+          public_token?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "physical_tags_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "physical_tag_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "physical_tags_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       caretakers: {
         Row: {
           created_at: string
@@ -163,6 +343,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      legal_acceptances: {
+        Row: {
+          accepted_at: string
+          created_at: string
+          privacy_version: string
+          source: string
+          terms_version: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          created_at?: string
+          privacy_version: string
+          source?: string
+          terms_version: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string
+          created_at?: string
+          privacy_version?: string
+          source?: string
+          terms_version?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       lost_mode_events: {
         Row: {
@@ -327,6 +537,77 @@ export type Database = {
         }
         Relationships: []
       }
+      pet_vet_access: {
+        Row: {
+          access_type: string
+          clinic: string | null
+          created_at: string
+          created_by: string
+          expires_at: string | null
+          id: string
+          invite_expires_at: string
+          permission: string
+          permissions: Json
+          pet_id: string
+          redeemed_at: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          token_hash: string
+          token_prefix: string
+          updated_at: string
+          vet_name: string
+          vet_user_id: string | null
+        }
+        Insert: {
+          access_type: string
+          clinic?: string | null
+          created_at?: string
+          created_by: string
+          expires_at?: string | null
+          id?: string
+          invite_expires_at: string
+          permission?: string
+          permissions?: Json
+          pet_id: string
+          redeemed_at?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash: string
+          token_prefix: string
+          updated_at?: string
+          vet_name: string
+          vet_user_id?: string | null
+        }
+        Update: {
+          access_type?: string
+          clinic?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          invite_expires_at?: string
+          permission?: string
+          permissions?: Json
+          pet_id?: string
+          redeemed_at?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash?: string
+          token_prefix?: string
+          updated_at?: string
+          vet_name?: string
+          vet_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pet_vet_access_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -334,6 +615,7 @@ export type Database = {
           full_name: string | null
           id: string
           is_blocked: boolean
+          notification_prefs: Json
           phone: string | null
           updated_at: string
           whatsapp: string | null
@@ -344,6 +626,7 @@ export type Database = {
           full_name?: string | null
           id: string
           is_blocked?: boolean
+          notification_prefs?: Json
           phone?: string | null
           updated_at?: string
           whatsapp?: string | null
@@ -354,11 +637,47 @@ export type Database = {
           full_name?: string | null
           id?: string
           is_blocked?: boolean
+          notification_prefs?: Json
           phone?: string | null
           updated_at?: string
           whatsapp?: string | null
         }
         Relationships: []
+      }
+      reminder_actions: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          pet_id: string
+          reminder_key: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          pet_id: string
+          reminder_key: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          pet_id?: string
+          reminder_key?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminder_actions_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sightings: {
         Row: {
@@ -732,6 +1051,45 @@ export type Database = {
           sightings: number
         }[]
       }
+      activate_physical_tag: {
+        Args: {
+          _activation_code: string
+          _pet_id: string
+          _public_token: string
+        }
+        Returns: Json
+      }
+      admin_create_tag_batch: {
+        Args: { _notes?: string | null; _quantity?: number }
+        Returns: Json
+      }
+      admin_create_beta_code: {
+        Args: {
+          _expires_at: string
+          _label: string
+          _max_redemptions: number
+          _plan: string
+        }
+        Returns: Json
+      }
+      admin_disable_beta_code: { Args: { _code_id: string }; Returns: Json }
+      admin_list_beta_codes: { Args: never; Returns: Json }
+      admin_list_beta_redemptions: { Args: { _code_id: string }; Returns: Json }
+      admin_revoke_beta_grant: { Args: { _grant_id: string }; Returns: Json }
+      redeem_beta_access: { Args: { _code: string }; Returns: Json }
+      admin_list_tag_batches: { Args: never; Returns: Json }
+      admin_regenerate_tag_activation: {
+        Args: { _tag_id: string }
+        Returns: Json
+      }
+      admin_set_batch_status: {
+        Args: { _batch_id: string; _status: string }
+        Returns: undefined
+      }
+      admin_set_tag_status: {
+        Args: { _status: string; _tag_id: string }
+        Returns: undefined
+      }
       admin_resolve_lost: { Args: { _pet_id: string }; Returns: undefined }
       admin_review_verification: {
         Args: { _notes?: string; _request_id: string; _status: string }
@@ -750,30 +1108,105 @@ export type Database = {
         Returns: undefined
       }
       claim_first_admin: { Args: never; Returns: boolean }
+      create_vet_access: {
+        Args: {
+          _access_type?: string
+          _clinic?: string
+          _duration_hours?: number
+          _expires_at?: string
+          _permission?: string
+          _permissions?: Json
+          _pet_id: string
+          _vet_name: string
+        }
+        Returns: {
+          access_id: string
+          access_token: string
+          access_type: string
+          expires_at: string | null
+          invite_expires_at: string
+          invite_url_path: string
+          permission: string
+          permissions: Json
+        }[]
+      }
       get_admin_stats: { Args: never; Returns: Json }
       get_public_pet: {
         Args: { _slug: string }
         Returns: {
-          allergies: string
-          birth_date: string
-          breed: string
-          color: string
+          allergies: string | null
+          birth_date: string | null
+          breed: string | null
+          color: string | null
+          emergency_contact_phone: string | null
+          emergency_instructions: string | null
           id: string
           is_lost: boolean
-          last_seen_location: string
-          lost_since: string
-          medical_notes: string
-          medications: string
-          microchip: string
-          name: string
-          photo_url: string
+          last_seen_location: string | null
+          lost_since: string | null
+          medical_notes: string | null
+          medications: string | null
+          microchip: string | null
+          name: string | null
+          owner_display_name: string | null
+          owner_email: string | null
+          pedigree: string | null
+          photo_url: string | null
           public_slug: string
-          reward_amount: number
-          secondary_contact_phone: string
-          sex: string
+          reward_amount: number | null
+          secondary_contact_name: string | null
+          secondary_contact_phone: string | null
+          sex: string | null
           show_medical_public: boolean
-          species: string
-          weight_kg: number
+          species: string | null
+          vaccines_public: Json | null
+          weight_kg: number | null
+        }[]
+      }
+      has_active_vet_access: { Args: { _pet_id: string }; Returns: boolean }
+      has_vet_permission: {
+        Args: { _area: string; _min_level?: string; _pet_id: string }
+        Returns: boolean
+      }
+      get_my_entitlements: { Args: never; Returns: Json }
+      get_my_legal_acceptance: { Args: never; Returns: Json }
+      accept_legal_documents: {
+        Args: {
+          _terms_version: string
+          _privacy_version: string
+          _source?: string
+        }
+        Returns: Json
+      }
+      get_my_vet_permissions: { Args: { _pet_id: string }; Returns: Json }
+      resolve_physical_tag: { Args: { _token: string }; Returns: Json }
+      get_vet_clinical_pet: {
+        Args: { _pet_id: string }
+        Returns: {
+          access_type: string
+          allergies: string | null
+          birth_date: string | null
+          breed: string | null
+          color: string | null
+          emergency_instructions: string | null
+          expires_at: string | null
+          id: string
+          medical_notes: string | null
+          medications: string | null
+          microchip: string | null
+          name: string | null
+          owner_email: string | null
+          owner_name: string | null
+          owner_phone: string | null
+          owner_relationship: string | null
+          owner_whatsapp: string | null
+          permissions: Json
+          photo_url: string | null
+          secondary_contact_name: string | null
+          secondary_contact_phone: string | null
+          sex: string | null
+          species: string | null
+          weight_kg: number | null
         }[]
       }
       has_role: {
@@ -784,11 +1217,90 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      list_my_vet_pets: {
+        Args: never
+        Returns: {
+          access_id: string
+          access_type: string
+          clinic: string | null
+          expires_at: string | null
+          permission: string
+          permissions: Json
+          pet_breed: string | null
+          pet_id: string
+          pet_name: string
+          pet_photo_url: string | null
+          pet_species: string | null
+          redeemed_at: string
+          vet_name: string
+        }[]
+      }
       pet_exists: { Args: { _pet_id: string }; Returns: boolean }
       pet_exists_and_lost: { Args: { _pet_id: string }; Returns: boolean }
+      preview_vet_access: {
+        Args: { _token: string }
+        Returns: {
+          access_id: string
+          access_type: string
+          clinic: string | null
+          expires_at: string | null
+          invite_expires_at: string
+          permission: string
+          pet_id: string
+          pet_name: string
+          pet_photo_url: string | null
+          pet_species: string | null
+          status: string
+          vet_name: string
+        }[]
+      }
       record_pet_scan: {
         Args: { _slug: string; _source?: string }
         Returns: undefined
+      }
+      redeem_vet_access: {
+        Args: { _token: string }
+        Returns: {
+          access_id: string
+          access_type: string
+          expires_at: string | null
+          permission: string
+          pet_id: string
+        }[]
+      }
+      revoke_vet_access: {
+        Args: { _access_id: string }
+        Returns: undefined
+      }
+      upsert_reminder_action: {
+        Args: { _action: string; _pet_id: string; _reminder_key: string }
+        Returns: undefined
+      }
+      update_vet_access_permissions: {
+        Args: { _access_id: string; _permissions: Json }
+        Returns: Json
+      }
+      update_vet_pet_health_fields: {
+        Args: {
+          _allergies?: string
+          _medical_notes?: string
+          _medications?: string
+          _pet_id: string
+          _set_allergies?: boolean
+          _set_medical_notes?: boolean
+          _set_medications?: boolean
+        }
+        Returns: undefined
+      }
+      vet_access_permission: { Args: { _pet_id: string }; Returns: string }
+      vet_add_weight: {
+        Args: {
+          _measured_at?: string
+          _notes?: string
+          _pet_id: string
+          _weight_kg: number
+        }
+        Returns: string
       }
     }
     Enums: {

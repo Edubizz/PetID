@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -7,8 +8,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { COLOR_OPTIONS, SEX_OPTIONS } from "@/lib/pet-constants";
-import { useEffect, useState } from "react";
+import { BREED_SPECIAL, getBreedOptionsForSpecies, isKnownBreed } from "@/lib/pet-breeds";
+import { cn } from "@/lib/utils";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 /**
  * Reusable dropdown/conditional fields for sex, color and microchip,
@@ -34,6 +47,111 @@ export function PetSexField({
           ))}
         </SelectContent>
       </Select>
+    </div>
+  );
+}
+
+/**
+ * Searchable breed combobox keyed by species.
+ * Preserves free-text values that aren't in the curated list.
+ */
+export function PetBreedField({
+  species,
+  value,
+  onChange,
+}: {
+  species: string | null | undefined;
+  value: string | null | undefined;
+  onChange: (v: string) => void;
+}) {
+  const options = useMemo(() => getBreedOptionsForSpecies(species), [species]);
+  const known = isKnownBreed(species, value);
+  const [open, setOpen] = useState(false);
+  const [customMode, setCustomMode] = useState(() => Boolean(value) && !known);
+
+  useEffect(() => {
+    if (known) setCustomMode(false);
+    else if (value && !known) setCustomMode(true);
+  }, [value, known]);
+
+  // When species changes, keep the stored breed (even if not in the new list).
+  useEffect(() => {
+    if (value && !isKnownBreed(species, value) && value !== BREED_SPECIAL.other) {
+      setCustomMode(true);
+    }
+  }, [species]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const displayLabel = customMode
+    ? value
+      ? value
+      : BREED_SPECIAL.other
+    : value || "Selecionar raça";
+
+  return (
+    <div>
+      <Label className="mb-1.5 block text-sm">Raça</Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="h-11 w-full justify-between font-normal"
+          >
+            <span className={cn("truncate", !value && !customMode && "text-muted-foreground")}>
+              {displayLabel}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Buscar raça…" />
+            <CommandList>
+              <CommandEmpty>Nenhuma raça encontrada.</CommandEmpty>
+              <CommandGroup>
+                {options.map((breed) => (
+                  <CommandItem
+                    key={breed}
+                    value={breed}
+                    onSelect={() => {
+                      if (breed === BREED_SPECIAL.other) {
+                        setCustomMode(true);
+                        if (known || !value) onChange("");
+                        setOpen(false);
+                        return;
+                      }
+                      setCustomMode(false);
+                      onChange(breed);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        (!customMode && value === breed) ||
+                          (customMode && breed === BREED_SPECIAL.other)
+                          ? "opacity-100"
+                          : "opacity-0",
+                      )}
+                    />
+                    {breed}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {customMode && (
+        <Input
+          className="mt-2"
+          placeholder="Digite a raça"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
     </div>
   );
 }

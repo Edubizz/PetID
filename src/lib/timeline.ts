@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Weight, Syringe, Stethoscope, FileText, AlertTriangle, ScanLine, ShieldCheck, Cake } from "lucide-react";
-import { CATEGORY_META, type TrackerCategory } from "@/lib/daily-care";
+import { CATEGORY_META, formatLoggedAmount, resolveEntryUnit, type TrackerCategory } from "@/lib/daily-care";
 
 /**
  * Reusable Health Timeline adapter layer.
@@ -132,17 +132,19 @@ export type DailyCareRow = {
   value: number;
   notes: string | null;
   completed_at: string;
+  metadata?: unknown;
   trackers: { id: string; title: string; category: TrackerCategory; color: string | null; unit: string | null } | null;
 };
 export function adaptDailyCare(rows: DailyCareRow[]): TimelineEvent[] {
   return rows.map((e) => {
     const meta = e.trackers ? CATEGORY_META[e.trackers.category] : undefined;
     const color = e.trackers?.color || meta?.color || TIMELINE_TYPE_META.daily_care.color;
+    const unit = resolveEntryUnit(e.metadata, e.trackers?.unit ?? meta?.unit);
     return {
       id: `daily_care:${e.id}`,
       type: "daily_care",
       title: e.trackers?.title ?? "Cuidado diário",
-      subtitle: `${e.value} ${e.trackers?.unit ?? meta?.unit ?? ""}${e.notes ? ` • ${e.notes}` : ""}`,
+      subtitle: `${formatLoggedAmount(e.value, unit)}${e.notes ? ` • ${e.notes}` : ""}`,
       date: e.completed_at,
       icon: meta?.icon ?? TIMELINE_TYPE_META.daily_care.icon,
       color,

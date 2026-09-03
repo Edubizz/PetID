@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
+import { logAndDescribeError } from "@/lib/errors";
 import { Shield, ShieldOff, Lock, Unlock, User, Search } from "lucide-react";
 
 export const Route = createFileRoute("/admin/users")({
@@ -64,7 +65,7 @@ function UsersPage() {
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin", "users"] }); toast.success("Papel atualizado"); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(logAndDescribeError("mutation", e, "Não foi possível atualizar o usuário.")),
   });
 
   const toggleBlock = useMutation({
@@ -73,7 +74,7 @@ function UsersPage() {
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin", "users"] }); toast.success("Status atualizado"); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(logAndDescribeError("mutation", e, "Não foi possível atualizar o usuário.")),
   });
 
   return (

@@ -11,6 +11,7 @@ import { AlertTriangle, MessageCircle, MapPin, Gift, Phone, ScanLine } from "luc
 import { toast } from "sonner";
 import { formatCurrencyBRL, formatDateTime } from "@/lib/pet-utils";
 import { logAndDescribeError } from "@/lib/errors";
+import { EmptyState } from "@/components/EmptyState";
 
 type Pet = {
   id: string;
@@ -158,6 +159,8 @@ export function LostModeTab({ pet, onToggleLost }: { pet: Pet; onToggleLost: () 
         <h3 className="text-lg font-semibold">Informações de emergência</h3>
         <p className="text-sm text-muted-foreground">
           Preencha os dados que aparecerão no perfil público enquanto o modo perdido estiver ativo.
+          O Modo Perdido ajuda na identificação e no contato — não é GPS, não garante localização
+          nem a recuperação do pet e não substitui busca e medidas de segurança locais.
         </p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div>
@@ -196,7 +199,7 @@ export function LostModeTab({ pet, onToggleLost }: { pet: Pet; onToggleLost: () 
                 placeholder="+55 11 90000-0000"
               />
               {whatsappHref && (
-                <Button type="button" variant="outline" size="icon" asChild title="Testar link do WhatsApp">
+                <Button type="button" variant="outline" size="icon" asChild title="Testar link do WhatsApp" aria-label="Testar link do WhatsApp">
                   <a href={whatsappHref} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /></a>
                 </Button>
               )}
@@ -269,9 +272,12 @@ export function LostModeTab({ pet, onToggleLost }: { pet: Pet; onToggleLost: () 
                 ))}
               </ol>
             ) : (
-              <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                Nenhum avistamento relatado ainda.
-              </div>
+              <EmptyState
+                size="sm"
+                icon={ScanLine}
+                title="Nenhum avistamento relatado ainda"
+                description="Qualquer pessoa que visitar o perfil público enquanto o modo perdido estiver ativo pode enviar um avistamento — ele aparece aqui em tempo real."
+              />
             )}
           </div>
         </section>

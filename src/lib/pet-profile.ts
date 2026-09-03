@@ -1,4 +1,9 @@
+import { resolveCompletenessDestination } from "@/lib/pet-navigation";
 import { computeAge } from "@/lib/pet-utils";
+import {
+  parsePublicVisibility,
+  type PublicVisibilitySettings,
+} from "@/lib/public-visibility";
 
 /** Grouped pet-profile extras stored in pets.profile_extras (one JSONB column). */
 export type ProfileOwnerExtras = {
@@ -26,16 +31,48 @@ export type ProfileIdentificationExtras = {
   license?: string;
 };
 
+/**
+ * Lightweight memory the Assistant uses to avoid nagging: which insight
+ * "keys" were explicitly dismissed and until when they stay suppressed.
+ * Learned habits (preferred amounts/times) are intentionally NOT stored here —
+ * they're recomputed live from tracker_entries each time (always accurate,
+ * zero extra writes/requests).
+ */
+export type AssistantMemory = {
+  /** insightKey -> ISO timestamp the suppression lasts until. */
+  dismissed?: Record<string, string>;
+};
+
+/** Which assistant categories the owner wants reminders for (Smart Assistant personalization). */
+export type ProfileAssistantExtras = {
+  water?: boolean;
+  vaccines?: boolean;
+  walks?: boolean;
+  weight?: boolean;
+  memory?: AssistantMemory;
+};
+
+/** Marks whether the guided first-run onboarding wizard has been completed. */
+export type ProfileOnboardingExtras = {
+  completed?: boolean;
+  completed_at?: string;
+};
+
 export type ProfileExtras = {
   owner?: ProfileOwnerExtras;
   veterinary?: ProfileVeterinaryExtras;
   identification?: ProfileIdentificationExtras;
+  assistant?: ProfileAssistantExtras;
+  onboarding?: ProfileOnboardingExtras;
+  public_visibility?: PublicVisibilitySettings;
 };
 
 export const EMPTY_PROFILE_EXTRAS: ProfileExtras = {
   owner: {},
   veterinary: {},
   identification: {},
+  assistant: { water: true, vaccines: true, walks: true, weight: true },
+  onboarding: {},
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -49,11 +86,28 @@ function pickStr(obj: Record<string, unknown>, key: string): string | undefined 
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
 }
 
+function pickBool(obj: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  const v = obj[key];
+  return typeof v === "boolean" ? v : fallback;
+}
+
+function pickDismissedMap(raw: unknown): Record<string, string> {
+  const src = asRecord(raw).dismissed;
+  const record = asRecord(src);
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value === "string" && value) out[key] = value;
+  }
+  return out;
+}
+
 export function parseProfileExtras(raw: unknown): ProfileExtras {
   const root = asRecord(raw);
   const owner = asRecord(root.owner);
   const veterinary = asRecord(root.veterinary);
   const identification = asRecord(root.identification);
+  const assistant = asRecord(root.assistant);
+  const onboarding = asRecord(root.onboarding);
   return {
     owner: {
       name: pickStr(owner, "name"),
@@ -77,6 +131,18 @@ export function parseProfileExtras(raw: unknown): ProfileExtras {
       passport: pickStr(identification, "passport"),
       license: pickStr(identification, "license"),
     },
+    assistant: {
+      water: pickBool(assistant, "water", true),
+      vaccines: pickBool(assistant, "vaccines", true),
+      walks: pickBool(assistant, "walks", true),
+      weight: pickBool(assistant, "weight", true),
+      memory: { dismissed: pickDismissedMap(assistant.memory) },
+    },
+    onboarding: {
+      completed: pickBool(onboarding, "completed", false),
+      completed_at: pickStr(onboarding, "completed_at"),
+    },
+    public_visibility: parsePublicVisibility(raw),
   };
 }
 
@@ -88,6 +154,8 @@ export type CompletenessItem = {
   id: string;
   label: string;
   tab: string;
+  action?: string;
+  section?: string;
   done: boolean;
 };
 
@@ -106,43 +174,59 @@ export type CompletenessInput = {
   hasPrimaryVet: boolean;
 };
 
+function completenessItem(
+  id: string,
+  label: string,
+  done: boolean,
+): CompletenessItem {
+  const dest = resolveCompletenessDestination(id);
+  return {
+    id,
+    label,
+    done,
+    tab: dest.tab,
+    action: dest.action,
+    section: dest.section,
+  };
+}
+
 export function computeProfileCompleteness(input: CompletenessInput): {
   pct: number;
   items: CompletenessItem[];
   missing: CompletenessItem[];
 } {
   const items: CompletenessItem[] = [
-    { id: "photo", label: "Foto do pet", tab: "info", done: filled(input.photo_url) },
-    { id: "breed", label: "Raça", tab: "info", done: filled(input.breed) },
-    { id: "sex", label: "Sexo", tab: "info", done: filled(input.sex) },
-    { id: "birth", label: "Data de nascimento", tab: "info", done: filled(input.birth_date) },
-    { id: "owner", label: "Tutor principal", tab: "info", done: filled(input.extras.owner?.name) || filled(input.extras.owner?.phone) },
-    {
-      id: "emergency",
-      label: "Contato de emergência",
-      tab: "info",
-      done: filled(input.secondary_contact_name) && filled(input.secondary_contact_phone),
-    },
-    {
-      id: "vet",
-      label: "Veterinário principal",
-      tab: "info",
-      done: input.hasPrimaryVet || filled(input.extras.veterinary?.name),
-    },
-    { id: "microchip", label: "Microchip", tab: "info", done: filled(input.microchip) },
-    {
-      id: "insurance",
-      label: "Seguro",
-      tab: "info",
-      done: filled(input.extras.identification?.insurance),
-    },
-    {
-      id: "weight",
-      label: "Histórico de peso",
-      tab: "health",
-      done: input.hasWeightHistory || input.weight_kg != null,
-    },
-    { id: "vaccine", label: "Vacinas", tab: "health", done: input.hasVaccine },
+    completenessItem("photo", "Foto do pet", filled(input.photo_url)),
+    completenessItem("breed", "Raça", filled(input.breed)),
+    completenessItem("sex", "Sexo", filled(input.sex)),
+    completenessItem("birth", "Data de nascimento", filled(input.birth_date)),
+    completenessItem(
+      "owner",
+      "Tutor principal",
+      filled(input.extras.owner?.name) || filled(input.extras.owner?.phone),
+    ),
+    completenessItem(
+      "emergency",
+      "Contato de emergência",
+      filled(input.secondary_contact_name) && filled(input.secondary_contact_phone),
+    ),
+    completenessItem(
+      "vet",
+      "Veterinário principal",
+      input.hasPrimaryVet || filled(input.extras.veterinary?.name),
+    ),
+    completenessItem("microchip", "Microchip", filled(input.microchip)),
+    completenessItem(
+      "insurance",
+      "Seguro",
+      filled(input.extras.identification?.insurance),
+    ),
+    completenessItem(
+      "weight",
+      "Histórico de peso",
+      input.hasWeightHistory || input.weight_kg != null,
+    ),
+    completenessItem("vaccine", "Vacinas", input.hasVaccine),
   ];
 
   const doneCount = items.filter((i) => i.done).length;

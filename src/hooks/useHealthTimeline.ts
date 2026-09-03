@@ -47,8 +47,8 @@ export function useHealthTimeline(pet: HealthTimelinePet) {
         supabase.from("vaccines").select("id, name, applied_at, next_dose, vet_name, notes").eq("pet_id", pet.id),
         supabase.from("appointments").select("id, scheduled_at, reason, vet_name, clinic, notes").eq("pet_id", pet.id),
         supabase.from("documents").select("id, title, url, category, created_at").eq("pet_id", pet.id),
-        supabase.from("tracker_entries").select("id, value, notes, completed_at, trackers(id, title, category, color, unit)").eq("pet_id", pet.id).gte("completed_at", since).order("completed_at", { ascending: false }),
-        supabase.from("trackers").select("id, title, category, is_active, target_per_day, unit, color").eq("pet_id", pet.id),
+        supabase.from("tracker_entries").select("id, value, notes, completed_at, metadata, trackers(id, title, category, color, unit)").eq("pet_id", pet.id).gte("completed_at", since).order("completed_at", { ascending: false }),
+        supabase.from("trackers").select("id, title, category, is_active, target_per_day, unit, color, reminder_times").eq("pet_id", pet.id),
         supabase.from("lost_mode_events").select("id, event, occurred_at, last_seen_location, reward_amount").eq("pet_id", pet.id).order("occurred_at", { ascending: false }),
         supabase.from("sightings").select("id, reporter_name, reporter_contact, location, message, photo_url, created_at").eq("pet_id", pet.id),
         supabase.from("verification_requests").select("id, status, notes, reviewed_at, created_at").eq("pet_id", pet.id),
@@ -73,6 +73,7 @@ export function useHealthTimeline(pet: HealthTimelinePet) {
         weightRows: weight.data ?? [],
         vaccineRows: vaccines.data ?? [],
         appointmentRows: appointments.data ?? [],
+        documentRows: (documents.data ?? []) as { id: string; title: string; category: string | null; url: string | null; created_at: string }[],
         trackerRows: (trackers.data ?? []) as {
           id: string;
           title: string;
@@ -81,8 +82,15 @@ export function useHealthTimeline(pet: HealthTimelinePet) {
           target_per_day: number;
           unit: string | null;
           color: string | null;
+          reminder_times?: string[] | null;
         }[],
-        entryRows: (dailyCare.data ?? []) as { id: string; value: number; completed_at: string; trackers: { id: string } | null }[],
+        entryRows: (dailyCare.data ?? []) as {
+          id: string;
+          value: number;
+          completed_at: string;
+          metadata?: unknown;
+          trackers: { id: string; category?: TrackerCategory } | null;
+        }[],
       };
     },
   });

@@ -17,12 +17,15 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
-  Plus, Pencil, Trash2, Flame, Trophy, Target, Star, Sparkles, ArrowLeft, X,
+  Plus, Pencil, Trash2, Flame, Trophy, Target, Star, Sparkles, ArrowLeft, X, Check,
   Dog, Cat, Bird, Rabbit, HelpCircle, AlertTriangle, RefreshCw, type LucideIcon,
 } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ResponsiveContainer, BarChart, Bar, XAxis, Tooltip } from "recharts";
 import { useQuickLogEntry } from "@/hooks/useQuickLogEntry";
+import { useCreateRoutine } from "@/hooks/useCreateRoutine";
 import { QuickLogControl } from "@/components/pet/QuickLogControl";
 import { logAndDescribeError } from "@/lib/errors";
 import {
@@ -32,6 +35,8 @@ import {
   AGE_OPTIONS,
   SIZE_OPTIONS,
   LIFESTYLE_OPTIONS,
+  DOG_AGE_HELPER_FOOTNOTE,
+  ageHelpersForSpecies,
   buildSmartRoutine,
   computeStats,
   groupEntriesByDay,
@@ -41,6 +46,15 @@ import {
   todayKey,
   setLastQuickValue,
   usesQuantityQuickLog,
+  entryUnitMetadata,
+  formatTrackerProgress,
+  formatTrackerGoalPerDay,
+  formatLoggedAmount,
+  resolveEntryUnit,
+  resolveWaterGoalMode,
+  waterUnitForMode,
+  defaultWaterTargetForMode,
+  WATER_MODE_SWITCH_WARNING,
   type TrackerCategory,
   type SpeciesPresetKey,
   type PetAgeGroup,
@@ -48,7 +62,11 @@ import {
   type PetLifestyle,
   type RoutineDraftItem,
   type DailyCareStats,
+  type WaterGoalMode,
+  parseRoutineQuantity,
+  sumTrackerEntriesCompatible,
 } from "@/lib/daily-care";
+import { preserveLegacyEntryUnitsBeforeModeSwitch } from "@/lib/water-mode-switch";
 
 type Tracker = {
   id: string;
@@ -71,6 +89,7 @@ type Entry = {
   value: number;
   notes: string | null;
   completed_at: string;
+  metadata?: unknown;
 };
 
 const ENTRIES_WINDOW_DAYS = 60;
@@ -122,7 +141,7 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tracker_entries")
-        .select("id, tracker_id, pet_id, value, notes, completed_at")
+        .select("id, tracker_id, pet_id, value, notes, completed_at, metadata")
         .eq("pet_id", petId)
         .gte("completed_at", since)
         .order("completed_at", { ascending: false });
@@ -152,12 +171,14 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
 
   const customLog = useMutation({
     mutationFn: async (payload: { tracker: Tracker; value: number; notes: string; completedAt: string }) => {
+      const unit = payload.tracker.unit ?? CATEGORY_META[payload.tracker.category].unit;
       const { error } = await supabase.from("tracker_entries").insert({
         tracker_id: payload.tracker.id,
         pet_id: petId,
         value: payload.value,
         notes: payload.notes || null,
         completed_at: payload.completedAt,
+        metadata: entryUnitMetadata(unit),
       });
       if (error) throw error;
     },
@@ -192,33 +213,14 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Trackers criados");
+      toast.success("Itens adicionados à rotina");
       invalidate();
       setPresetsOpen(false);
     },
-    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: createPreset failed", e, "Não foi possível criar os trackers predefinidos.")),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: createPreset failed", e, "Não foi possível adicionar os itens predefinidos.")),
   });
 
-  const createRoutine = useMutation({
-    mutationFn: async (items: RoutineDraftItem[]) => {
-      const rows = items.map((t) => ({
-        pet_id: petId,
-        title: t.title,
-        category: t.category,
-        target_per_day: t.target_per_day,
-        unit: t.unit,
-        color: CATEGORY_META[t.category].color,
-      }));
-      if (rows.length === 0) return;
-      const { error } = await supabase.from("trackers").insert(rows);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Plano de cuidados criado!");
-      invalidate();
-    },
-    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: createRoutine failed", e, "Não foi possível criar o plano de cuidados. Tente novamente.")),
-  });
+  const createRoutine = useCreateRoutine(petId);
 
   const removeTracker = useMutation({
     mutationFn: async (id: string) => {
@@ -226,11 +228,11 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Tracker removido");
+      toast.success("Item removido da rotina");
       invalidate();
       setToDelete(null);
     },
-    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: removeTracker failed", e, "Não foi possível remover o tracker.")),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: removeTracker failed", e, "Não foi possível remover o item.")),
   });
 
   const toggleActive = useMutation({
@@ -239,19 +241,20 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
       if (error) throw error;
     },
     onSuccess: () => invalidate(),
-    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: toggleActive failed", e, "Não foi possível atualizar o tracker.")),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: toggleActive failed", e, "Não foi possível atualizar o item.")),
   });
 
   const todaySums = useMemo(() => {
     const map = new Map<string, number>();
     const key = todayKey();
-    for (const e of entries ?? []) {
-      if (dayKey(e.completed_at) === key) {
-        map.set(e.tracker_id, (map.get(e.tracker_id) ?? 0) + Number(e.value));
-      }
+    for (const t of trackers ?? []) {
+      map.set(
+        t.id,
+        sumTrackerEntriesCompatible(entries ?? [], t.id, t.unit, { day: key }),
+      );
     }
     return map;
-  }, [entries]);
+  }, [entries, trackers]);
 
   const stats = useMemo(() => computeStats(trackers ?? [], entries ?? [], ENTRIES_WINDOW_DAYS), [trackers, entries]);
 
@@ -279,9 +282,14 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-32 w-full" />
+      <div className="space-y-4" role="status" aria-live="polite">
+        <span className="sr-only">Carregando rotina…</span>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Skeleton className="h-40 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+        </div>
+        <Skeleton className="h-56 w-full rounded-2xl" />
       </div>
     );
   }
@@ -293,7 +301,7 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
     return (
       <div className="rounded-2xl border border-dashed border-destructive/40 bg-destructive/5 p-8 text-center">
         <AlertTriangle className="mx-auto h-8 w-8 text-destructive" />
-        <p className="mt-3 font-medium text-destructive">Não foi possível carregar os cuidados diários.</p>
+        <p className="mt-3 font-medium text-destructive">Não foi possível carregar a rotina.</p>
         <p className="mt-1 text-sm text-muted-foreground">Verifique sua conexão e tente novamente.</p>
         <Button
           size="sm"
@@ -320,14 +328,14 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
         <>
           <section>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold">Hoje</h3>
+              <h3 className="text-lg font-semibold">Rotina de hoje</h3>
               <div className="flex gap-2">
                 <Popover open={presetsOpen} onOpenChange={setPresetsOpen}>
                   <PopoverTrigger asChild>
-                    <Button size="sm" variant="outline" className="rounded-full">Predefinidos</Button>
+                    <Button size="sm" variant="outline" className="min-h-9 rounded-full">Predefinidos</Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64">
-                    <p className="mb-2 text-sm font-medium">Adicionar trackers comuns</p>
+                    <p className="mb-2 text-sm font-medium">Adicionar itens comuns</p>
                     <div className="flex flex-wrap gap-2">
                       {(Object.keys(SPECIES_PRESETS) as SpeciesPresetKey[]).map((k) => (
                         <Button key={k} size="sm" variant="secondary" onClick={() => createPreset.mutate(k)} disabled={createPreset.isPending}>
@@ -337,28 +345,30 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
                     </div>
                   </PopoverContent>
                 </Popover>
-                <Button size="sm" className="rounded-full" onClick={openNew}>
-                  <Plus className="mr-2 h-4 w-4" /> Novo tracker
+                <Button size="sm" className="min-h-9 rounded-full" onClick={openNew}>
+                  <Plus className="mr-2 h-4 w-4" /> Novo item
                 </Button>
               </div>
             </div>
 
             {activeTrackers.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                Todos os trackers estão pausados. Reative um abaixo ou crie um novo.
+                Todos os itens da rotina estão pausados. Reative um abaixo ou crie um novo.
               </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {activeTrackers.map((t) => (
+                {activeTrackers.map((t, index) => (
                   <TrackerCard
                     key={t.id}
                     tracker={t}
                     value={todaySums.get(t.id) ?? 0}
+                    entries={entries}
                     onQuickLog={(value) => quickLog.mutate({ tracker: t, value })}
                     onCustomLog={(payload) => customLog.mutate({ tracker: t, ...payload })}
                     onEdit={() => openEdit(t)}
                     onDelete={() => setToDelete(t)}
                     quickPending={quickLog.isPending}
+                    animationDelay={Math.min(index, 8) * 50}
                   />
                 ))}
               </div>
@@ -368,7 +378,7 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
           {inactiveTrackers.length > 0 && (
             <details className="rounded-2xl border border-border bg-card p-4">
               <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
-                Trackers pausados ({inactiveTrackers.length})
+                Itens pausados ({inactiveTrackers.length})
               </summary>
               <div className="mt-3 space-y-2">
                 {inactiveTrackers.map((t) => (
@@ -376,7 +386,7 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
                     <span>{t.title}</span>
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="outline" onClick={() => toggleActive.mutate(t)}>Reativar</Button>
-                      <Button size="icon" variant="ghost" onClick={() => setToDelete(t)}>
+                      <Button size="icon" variant="ghost" onClick={() => setToDelete(t)} aria-label={`Excluir tracker ${t.title}`}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
@@ -397,7 +407,7 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
       <ConfirmDialog
         open={!!toDelete}
         onOpenChange={(o) => !o && setToDelete(null)}
-        title="Excluir tracker?"
+        title="Excluir item da rotina?"
         description={toDelete ? `Remover "${toDelete.title}" e todo o histórico de registros associado?` : ""}
         destructive
         confirmLabel="Excluir"
@@ -412,24 +422,29 @@ export function DailyCareTab({ petId, petName }: { petId: string; petName?: stri
 function TrackerCard({
   tracker,
   value,
+  entries,
   onQuickLog,
   onCustomLog,
   onEdit,
   onDelete,
   quickPending,
+  animationDelay = 0,
 }: {
   tracker: Tracker;
   value: number;
+  entries?: { tracker_id: string; value: number; completed_at: string }[];
   onQuickLog: (value: number) => void;
   onCustomLog: (payload: { value: number; notes: string; completedAt: string }) => void;
   onEdit: () => void;
   onDelete: () => void;
   quickPending: boolean;
+  animationDelay?: number;
 }) {
   const meta = CATEGORY_META[tracker.category];
   const Icon = meta.icon;
   const target = tracker.target_per_day || 1;
   const pct = Math.min(100, Math.round((value / target) * 100));
+  const isDone = value >= target;
   const color = tracker.color || meta.color;
 
   const [customOpen, setCustomOpen] = useState(false);
@@ -447,25 +462,41 @@ function TrackerCard({
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+    <div
+      className={cn(
+        "animate-in fade-in slide-in-from-bottom-1 fill-mode-both rounded-2xl border p-5 shadow-[var(--shadow-card)] transition-colors duration-300",
+        isDone ? "border-emerald-500/30 bg-emerald-500/5" : "border-border bg-card",
+      )}
+      style={{ animationDelay: `${animationDelay}ms` }}
+    >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform"
             style={{ backgroundColor: `${color}22`, color }}
           >
             <Icon className="h-5 w-5" />
+            {isDone && (
+              <span className="animate-in zoom-in fade-in absolute -bottom-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-emerald-500 text-white duration-300">
+                <Check className="h-2.5 w-2.5" />
+              </span>
+            )}
           </div>
-          <div>
-            <p className="font-semibold leading-tight">{tracker.title}</p>
-            <p className="text-xs text-muted-foreground">
-              {value} / {target} {tracker.unit ?? meta.unit}
+          <div className="min-w-0">
+            <p className="truncate font-semibold leading-tight">{tracker.title}</p>
+            <p className="text-xs leading-snug text-muted-foreground">
+              {formatTrackerProgress(value, target, tracker.unit ?? meta.unit)}
+              {isDone ? " · Meta concluída" : ""}
             </p>
           </div>
         </div>
         <div className="flex shrink-0 gap-0.5">
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onDelete}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9" onClick={onEdit} aria-label={`Editar ${tracker.title}`}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9" onClick={onDelete} aria-label={`Excluir ${tracker.title}`}>
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
         </div>
       </div>
 
@@ -477,10 +508,11 @@ function TrackerCard({
           onLog={onQuickLog}
           pending={quickPending}
           refreshToken={value}
+          entries={entries}
         />
         <Popover open={customOpen} onOpenChange={setCustomOpen}>
           <PopoverTrigger asChild>
-            <Button size="sm" variant="outline" className="rounded-full">Registro personalizado</Button>
+            <Button size="sm" variant="outline" className="min-h-9 rounded-full">Registro personalizado</Button>
           </PopoverTrigger>
           <PopoverContent className="w-72">
             <p className="mb-2 text-sm font-medium">Registro personalizado</p>
@@ -510,14 +542,22 @@ function TrackerCard({
 
 function toFormState(editing: Tracker | null) {
   const category = (editing?.category ?? "custom") as TrackerCategory;
+  const unit = editing?.unit ?? (category === "water" ? waterUnitForMode("bowls") : CATEGORY_META[category].unit);
+  const waterMode: WaterGoalMode =
+    category === "water" ? resolveWaterGoalMode(unit) : "volume";
   return {
-    title: editing?.title ?? "",
+    title: editing?.title ?? (category === "water" ? "Água" : ""),
     category,
-    target_per_day: editing ? String(editing.target_per_day) : "1",
-    unit: editing?.unit ?? CATEGORY_META[category].unit,
+    target_per_day: editing
+      ? String(editing.target_per_day)
+      : String(category === "water" ? defaultWaterTargetForMode(waterMode) : 1),
+    unit,
+    waterMode,
+    volumeUnit: (unit === "l" || unit === "L" ? "l" : "ml") as "ml" | "l",
     color: editing?.color ?? CATEGORY_META[category].color,
     is_active: editing?.is_active ?? true,
     reminderTimes: editing?.reminder_times ?? [],
+    modeSwitchWarned: false,
   };
 }
 
@@ -539,15 +579,59 @@ function TrackerFormDialog({
     if (open) setForm(toFormState(editing));
   }, [open, editing]);
 
+  const initialWaterMode = editing && editing.category === "water"
+    ? resolveWaterGoalMode(editing.unit)
+    : null;
+
+  const setWaterMode = (mode: WaterGoalMode) => {
+    setForm((f) => {
+      const switching = initialWaterMode != null && initialWaterMode !== mode;
+      return {
+        ...f,
+        waterMode: mode,
+        unit: waterUnitForMode(mode, f.volumeUnit),
+        target_per_day: String(defaultWaterTargetForMode(mode)),
+        modeSwitchWarned: switching || f.modeSwitchWarned,
+      };
+    });
+  };
+
   const save = useMutation({
     mutationFn: async () => {
       if (!form.title.trim()) throw new Error("Informe um nome para o tracker.");
+      const qty = parseRoutineQuantity(form.target_per_day);
+      if (!qty.ok) throw new Error(qty.message);
+      const unit =
+        form.category === "water"
+          ? waterUnitForMode(form.waterMode, form.volumeUnit)
+          : form.unit || null;
+
+      // Mode switch: snapshot old unit onto legacy entries BEFORE changing tracker.unit.
+      if (editing && editing.category === "water" && form.category === "water") {
+        const previousUnit = editing.unit ?? CATEGORY_META.water.unit;
+        const nextMode = resolveWaterGoalMode(unit);
+        const prevMode = resolveWaterGoalMode(previousUnit);
+        if (prevMode !== nextMode) {
+          try {
+            await preserveLegacyEntryUnitsBeforeModeSwitch(editing.id, previousUnit);
+          } catch (e) {
+            throw new Error(
+              logAndDescribeError(
+                "preserveLegacyEntryUnitsBeforeModeSwitch",
+                e,
+                "Não foi possível preservar o histórico antes de mudar o modo. A meta não foi alterada.",
+              ),
+            );
+          }
+        }
+      }
+
       const payload = {
         pet_id: petId,
         title: form.title.trim(),
         category: form.category,
-        target_per_day: Number(form.target_per_day) || 1,
-        unit: form.unit || null,
+        target_per_day: qty.value,
+        unit,
         color: form.color || CATEGORY_META[form.category].color,
         is_active: form.is_active,
         reminder_times: form.reminderTimes.filter(Boolean),
@@ -558,32 +642,53 @@ function TrackerFormDialog({
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(editing ? "Tracker atualizado" : "Tracker criado");
+      toast.success(editing ? "Item atualizado" : "Item adicionado à rotina");
       qc.invalidateQueries({ queryKey: ["trackers", petId] });
+      qc.invalidateQueries({ queryKey: ["tracker-entries", petId] });
       qc.invalidateQueries({ queryKey: ["today-care-overview"] });
       qc.invalidateQueries({ queryKey: ["home-agenda"] });
       qc.invalidateQueries({ queryKey: ["health-timeline", petId] });
       onOpenChange(false);
     },
-    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: save tracker failed", e, editing ? "Não foi possível salvar as alterações do tracker." : "Não foi possível criar o tracker.")),
+    onError: (e: unknown) => toast.error(logAndDescribeError("DailyCareTab: save tracker failed", e, editing ? "Não foi possível salvar as alterações." : "Não foi possível adicionar o item.")),
   });
+
+  const isWater = form.category === "water";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? "Editar tracker" : "Novo tracker"}</DialogTitle></DialogHeader>
+      <DialogContent className="max-h-[min(90vh,100dvh)] overflow-y-auto sm:max-w-lg">
+        <DialogHeader><DialogTitle>{editing ? "Editar item" : "Novo item da rotina"}</DialogTitle></DialogHeader>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="md:col-span-2">
             <Label>Nome *</Label>
             <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ex.: Ração da manhã" />
           </div>
-          <div>
+          <div className={isWater ? "md:col-span-2" : undefined}>
             <Label>Categoria</Label>
             <Select
               value={form.category}
               onValueChange={(v) => {
                 const category = v as TrackerCategory;
-                setForm((f) => ({ ...f, category, unit: f.unit || CATEGORY_META[category].unit }));
+                if (category === "water") {
+                  const mode: WaterGoalMode = "bowls";
+                  setForm((f) => ({
+                    ...f,
+                    category,
+                    title: f.title.trim() ? f.title : "Água",
+                    waterMode: mode,
+                    unit: waterUnitForMode(mode),
+                    target_per_day: String(defaultWaterTargetForMode(mode)),
+                    color: f.color || CATEGORY_META.water.color,
+                  }));
+                  return;
+                }
+                setForm((f) => ({
+                  ...f,
+                  category,
+                  unit: CATEGORY_META[category].unit,
+                  target_per_day: f.target_per_day || "1",
+                }));
               }}
             >
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -592,14 +697,127 @@ function TrackerFormDialog({
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>Meta por dia</Label>
-            <Input type="number" min="0" step="0.1" value={form.target_per_day} onChange={(e) => setForm({ ...form, target_per_day: e.target.value })} />
-          </div>
-          <div>
-            <Label>Unidade</Label>
-            <Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="ml, min, doses…" />
-          </div>
+
+          {isWater && (
+            <div className="md:col-span-2 space-y-3">
+              <div>
+                <Label className="text-sm">Como você prefere acompanhar a água?</Label>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setWaterMode("bowls")}
+                    className={`rounded-2xl border-2 p-3 text-left transition-colors ${
+                      form.waterMode === "bowls"
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-card"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">Potes por dia</p>
+                    <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                      Mais simples para acompanhar no dia a dia.
+                    </p>
+                    <p className="mt-1 text-[11px] font-medium text-primary">Recomendado</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWaterMode("volume")}
+                    className={`rounded-2xl border-2 p-3 text-left transition-colors ${
+                      form.waterMode === "volume"
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-card"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">Quantidade exata</p>
+                    <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                      Para quem prefere controlar em ml ou litros.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {form.modeSwitchWarned && initialWaterMode && initialWaterMode !== form.waterMode && (
+                <p className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs leading-snug text-muted-foreground">
+                  {WATER_MODE_SWITCH_WARNING}
+                </p>
+              )}
+
+              {form.waterMode === "bowls" ? (
+                <div>
+                  <Label>Quantas vezes você pretende encher o pote por dia?</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    value={form.target_per_day}
+                    onChange={(e) => setForm({ ...form, target_per_day: e.target.value })}
+                    className="mt-1.5"
+                  />
+                  {Number(form.target_per_day) > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatTrackerGoalPerDay(Number(form.target_per_day), waterUnitForMode("bowls"))}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label>Meta por dia</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      inputMode="decimal"
+                      value={form.target_per_day}
+                      onChange={(e) => setForm({ ...form, target_per_day: e.target.value })}
+                      className="mt-1.5"
+                    />
+                  </div>
+                  <div>
+                    <Label>Unidade</Label>
+                    <Select
+                      value={form.volumeUnit}
+                      onValueChange={(v) => {
+                        const volumeUnit = v as "ml" | "l";
+                        setForm((f) => ({
+                          ...f,
+                          volumeUnit,
+                          unit: waterUnitForMode("volume", volumeUnit),
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ml">ml</SelectItem>
+                        <SelectItem value="l">L</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isWater && (
+            <>
+              <div>
+                <Label>Meta por dia</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  inputMode="decimal"
+                  value={form.target_per_day}
+                  onChange={(e) => setForm({ ...form, target_per_day: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Unidade</Label>
+                <Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="ml, min, doses…" />
+              </div>
+            </>
+          )}
+
           <div>
             <Label>Cor</Label>
             <Input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="h-9 p-1" />
@@ -644,7 +862,7 @@ function TrackerFormDialog({
           {editing && (
             <div className="flex items-center justify-between rounded-xl border border-border p-3 md:col-span-2">
               <div>
-                <p className="text-sm font-medium">Tracker ativo</p>
+                <p className="text-sm font-medium">Item ativo</p>
                 <p className="text-xs text-muted-foreground">Desative para pausar sem perder o histórico.</p>
               </div>
               <Switch checked={form.is_active} onCheckedChange={(v) => setForm({ ...form, is_active: v })} />
@@ -675,23 +893,33 @@ const SPECIES_ICONS: Record<SpeciesPresetKey, LucideIcon> = {
 const WIZARD_STEPS = ["species", "age", "size", "lifestyle", "review"] as const;
 type WizardStep = (typeof WIZARD_STEPS)[number];
 
-function SmartOnboarding({
+/**
+ * Also reused (unmodified) by the pet-creation onboarding wizard
+ * (`PetOnboardingWizard`) as its "Build the Smart Routine" step — exported so
+ * that flow can drive the exact same species/age/size/lifestyle questions
+ * and tracker-review UI instead of duplicating them.
+ */
+export function SmartOnboarding({
   petName,
   onConfirm,
   onBlank,
   pending,
+  initialSpecies,
 }: {
   petName?: string;
   onConfirm: (items: RoutineDraftItem[]) => void;
   onBlank: () => void;
   pending: boolean;
+  /** When the pet's species is already known, skip the species question. */
+  initialSpecies?: SpeciesPresetKey | null;
 }) {
-  const [stepIndex, setStepIndex] = useState(0);
-  const [species, setSpecies] = useState<SpeciesPresetKey | null>(null);
+  const [stepIndex, setStepIndex] = useState(initialSpecies ? 1 : 0);
+  const [species, setSpecies] = useState<SpeciesPresetKey | null>(initialSpecies ?? null);
   const [age, setAge] = useState<PetAgeGroup | null>(null);
   const [size, setSize] = useState<PetSize | null>(null);
   const [lifestyle, setLifestyle] = useState<PetLifestyle | null>(null);
   const [draft, setDraft] = useState<RoutineDraftItem[]>([]);
+  const [targetEdits, setTargetEdits] = useState<Record<string, string>>({});
 
   const step: WizardStep = WIZARD_STEPS[stepIndex];
   const name = petName || "seu pet";
@@ -701,17 +929,40 @@ function SmartOnboarding({
 
   const finishQuestions = (finalLifestyle: PetLifestyle) => {
     if (!species || !age || !size) return;
-    setDraft(buildSmartRoutine({ species, age, size, lifestyle: finalLifestyle }));
+    const next = buildSmartRoutine({ species, age, size, lifestyle: finalLifestyle });
+    setDraft(next);
+    setTargetEdits(Object.fromEntries(next.map((d) => [d.key, String(d.target_per_day)])));
     goNext();
   };
 
-  const updateDraftTarget = (key: string, value: number) => {
-    setDraft((prev) => prev.map((d) => (d.key === key ? { ...d, target_per_day: Math.max(1, value) } : d)));
+  const updateDraftTarget = (key: string, raw: string) => {
+    setTargetEdits((prev) => ({ ...prev, [key]: raw }));
   };
-  const removeDraftItem = (key: string) => setDraft((prev) => prev.filter((d) => d.key !== key));
+  const removeDraftItem = (key: string) => {
+    setDraft((prev) => prev.filter((d) => d.key !== key));
+    setTargetEdits((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const confirmPlan = () => {
+    const resolved: RoutineDraftItem[] = [];
+    for (const item of draft) {
+      const raw = targetEdits[item.key] ?? String(item.target_per_day);
+      const qty = parseRoutineQuantity(raw);
+      if (!qty.ok) {
+        toast.error(qty.message);
+        return;
+      }
+      resolved.push({ ...item, target_per_day: qty.value });
+    }
+    onConfirm(resolved);
+  };
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/5 to-card p-8">
+    <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/5 to-card p-4 sm:p-8">
       {step !== "review" && (
         <div className="mb-6 flex items-center gap-1.5">
           {WIZARD_STEPS.slice(0, 4).map((s, i) => (
@@ -737,10 +988,27 @@ function SmartOnboarding({
       )}
 
       {step === "age" && (
-        <WizardQuestion title="Qual a idade?" onBack={goBack}>
-          <div className="grid grid-cols-3 gap-3">
+        <WizardQuestion
+          title="Qual a idade?"
+          subtitle={
+            species === "dog"
+              ? DOG_AGE_HELPER_FOOTNOTE
+              : undefined
+          }
+          onBack={goBack}
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {AGE_OPTIONS.map((o) => (
-              <WizardOption key={o.value} label={o.label} selected={age === o.value} onClick={() => { setAge(o.value); goNext(); }} />
+              <WizardOption
+                key={o.value}
+                label={o.label}
+                description={ageHelpersForSpecies(species)?.[o.value]}
+                selected={age === o.value}
+                onClick={() => {
+                  setAge(o.value);
+                  goNext();
+                }}
+              />
             ))}
           </div>
         </WizardQuestion>
@@ -748,7 +1016,7 @@ function SmartOnboarding({
 
       {step === "size" && (
         <WizardQuestion title="Qual o porte?" onBack={goBack}>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {SIZE_OPTIONS.map((o) => (
               <WizardOption key={o.value} label={o.label} selected={size === o.value} onClick={() => { setSize(o.value); goNext(); }} />
             ))}
@@ -758,7 +1026,7 @@ function SmartOnboarding({
 
       {step === "lifestyle" && (
         <WizardQuestion title="Como é a rotina?" onBack={goBack}>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {LIFESTYLE_OPTIONS.map((o) => (
               <WizardOption
                 key={o.value}
@@ -784,24 +1052,100 @@ function SmartOnboarding({
             {draft.map((item) => {
               const meta = CATEGORY_META[item.category];
               const Icon = meta.icon;
+              const rawTarget = targetEdits[item.key] ?? "";
+              const parsedTarget = Number(String(rawTarget).replace(",", "."));
+              const targetNum =
+                Number.isFinite(parsedTarget) && parsedTarget > 0
+                  ? parsedTarget
+                  : item.target_per_day;
+              const isWater = item.category === "water";
+              const waterMode = resolveWaterGoalMode(item.unit);
               return (
-                <div key={item.key} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${meta.color}22`, color: meta.color }}>
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0 flex-1 font-medium">{item.title}</span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      value={item.target_per_day}
-                      onChange={(e) => updateDraftTarget(item.key, Number(e.target.value) || 1)}
-                      className="h-9 w-16 text-center"
-                    />
-                    <span className="w-20 text-xs text-muted-foreground">{item.unit}/dia</span>
-                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => removeDraftItem(item.key)}>
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
+                <div
+                  key={item.key}
+                  className="rounded-2xl border border-border bg-card p-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                      style={{ backgroundColor: `${meta.color}22`, color: meta.color }}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 break-words font-medium leading-snug">{item.title}</p>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0"
+                          onClick={() => removeDraftItem(item.key)}
+                          aria-label={`Remover ${item.title} do plano`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+
+                      {isWater && (
+                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            className={`rounded-xl border px-2.5 py-2 text-left text-xs ${
+                              waterMode === "bowls" ? "border-primary bg-primary/5 font-medium" : "border-border"
+                            }`}
+                            onClick={() => {
+                              const next = defaultWaterTargetForMode("bowls");
+                              setDraft((prev) =>
+                                prev.map((d) =>
+                                  d.key === item.key
+                                    ? { ...d, unit: waterUnitForMode("bowls"), target_per_day: next }
+                                    : d,
+                                ),
+                              );
+                              setTargetEdits((prev) => ({ ...prev, [item.key]: String(next) }));
+                            }}
+                          >
+                            Potes por dia
+                            <span className="mt-0.5 block font-normal text-muted-foreground">Recomendado</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`rounded-xl border px-2.5 py-2 text-left text-xs ${
+                              waterMode === "volume" ? "border-primary bg-primary/5 font-medium" : "border-border"
+                            }`}
+                            onClick={() => {
+                              const next = defaultWaterTargetForMode("volume");
+                              setDraft((prev) =>
+                                prev.map((d) =>
+                                  d.key === item.key
+                                    ? { ...d, unit: waterUnitForMode("volume"), target_per_day: next }
+                                    : d,
+                                ),
+                              );
+                              setTargetEdits((prev) => ({ ...prev, [item.key]: String(next) }));
+                            }}
+                          >
+                            Quantidade exata (ml)
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          step={waterMode === "bowls" ? "1" : "0.1"}
+                          inputMode={waterMode === "bowls" ? "numeric" : "decimal"}
+                          value={rawTarget}
+                          onChange={(e) => updateDraftTarget(item.key, e.target.value)}
+                          className="h-9 w-24 min-w-0 max-w-full text-center"
+                          aria-label={`Meta diária de ${item.title}`}
+                        />
+                        <span className="min-w-0 break-words text-xs leading-snug text-muted-foreground">
+                          {formatTrackerGoalPerDay(targetNum, item.unit)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
@@ -813,11 +1157,19 @@ function SmartOnboarding({
             )}
           </div>
 
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            <Button onClick={() => onConfirm(draft)} disabled={pending || draft.length === 0} className="rounded-full">
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <Button
+              onClick={confirmPlan}
+              disabled={pending || draft.length === 0}
+              className="min-h-11 w-full rounded-full sm:w-auto"
+            >
               {pending ? "Criando plano…" : "Confirmar plano"}
             </Button>
-            <Button variant="ghost" onClick={() => setStepIndex(0)} className="rounded-full">
+            <Button
+              variant="ghost"
+              onClick={() => setStepIndex(0)}
+              className="min-h-11 w-full rounded-full sm:w-auto"
+            >
               <ArrowLeft className="mr-2 h-4 w-4" /> Recomeçar
             </Button>
           </div>
@@ -855,23 +1207,29 @@ function WizardQuestion({
 function WizardOption({
   icon: Icon,
   label,
+  description,
   selected,
   onClick,
 }: {
   icon?: LucideIcon;
   label: string;
+  description?: string;
   selected: boolean;
   onClick: () => void;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-2 rounded-2xl border-2 p-4 text-center transition-all hover:-translate-y-0.5 hover:shadow-md ${
+      className={`flex min-h-11 w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 p-4 text-center transition-all hover:-translate-y-0.5 hover:shadow-md ${
         selected ? "border-primary bg-primary/5" : "border-border bg-card"
       }`}
     >
       {Icon && <Icon className={`h-6 w-6 ${selected ? "text-primary" : "text-muted-foreground"}`} />}
-      <span className="text-sm font-medium">{label}</span>
+      <span className="text-sm font-medium leading-snug">{label}</span>
+      {description ? (
+        <span className="max-w-[14rem] text-xs leading-snug text-muted-foreground">{description}</span>
+      ) : null}
     </button>
   );
 }
@@ -924,8 +1282,13 @@ function HistorySection({
     <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
       <h3 className="text-lg font-semibold">Histórico</h3>
       {groups.length === 0 ? (
-        <div className="mt-4 rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          Nenhum registro ainda. Use os botões acima para começar hoje.
+        <div className="mt-4">
+          <EmptyState
+            size="sm"
+            icon={Sparkles}
+            title="Nenhum registro ainda"
+            description="Use os botões da rotina acima para registrar o primeiro cuidado de hoje — seu histórico começa a partir daí."
+          />
         </div>
       ) : (
         <div className="mt-4 space-y-6">
@@ -947,9 +1310,13 @@ function HistorySection({
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{tracker?.title ?? "Tracker removido"}</p>
+                        <p className="truncate font-medium">{tracker?.title ?? "Item removido"}</p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {e.value} {tracker?.unit ?? meta?.unit ?? ""}{e.notes ? ` • ${e.notes}` : ""}
+                          {formatLoggedAmount(
+                            e.value,
+                            resolveEntryUnit(e.metadata, tracker?.unit ?? meta?.unit),
+                          )}
+                          {e.notes ? ` • ${e.notes}` : ""}
                         </p>
                       </div>
                       <span className="shrink-0 text-xs text-muted-foreground">{formatTime(e.completed_at)}</span>

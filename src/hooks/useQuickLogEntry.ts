@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   CATEGORY_META,
+  entryUnitMetadata,
   setLastQuickValue,
   usesQuantityQuickLog,
   type TrackerCategory,
@@ -34,20 +35,24 @@ export function useQuickLogEntry(petId: string, invalidateKeys: QueryKey[]) {
       if (!Number.isFinite(value) || value <= 0) {
         throw new Error("Informe um valor válido.");
       }
+      const unit = tracker.unit ?? CATEGORY_META[tracker.category].unit;
       const { error } = await supabase.from("tracker_entries").insert({
         tracker_id: tracker.id,
         pet_id: petId,
         value,
+        metadata: entryUnitMetadata(unit),
       });
       if (error) throw error;
-      return { tracker, value };
+      return { tracker, value, unit };
     },
-    onSuccess: ({ tracker, value }) => {
-      if (usesQuantityQuickLog(tracker.category, tracker.unit ?? CATEGORY_META[tracker.category].unit)) {
+    onSuccess: ({ tracker, value, unit }) => {
+      if (usesQuantityQuickLog(tracker.category, unit)) {
         setLastQuickValue(tracker.id, value);
       }
       toast.success(tracker.title ? `${tracker.title} registrado` : "Registrado!");
       for (const key of invalidateKeys) qc.invalidateQueries({ queryKey: key });
+      qc.invalidateQueries({ queryKey: ["owner-reminders"] });
+      qc.invalidateQueries({ queryKey: ["today-care-overview"] });
     },
     onError: (e: unknown, { tracker }) =>
       toast.error(

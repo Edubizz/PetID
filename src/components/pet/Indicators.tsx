@@ -9,9 +9,12 @@ type IndicatorProps = {
   hint?: string;
 };
 
-function Card({ icon: Icon, label, value, hint }: IndicatorProps) {
+function Card({ icon: Icon, label, value, hint, delay = 0 }: IndicatorProps & { delay?: number }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+    <div
+      style={{ animationDelay: `${delay}ms` }}
+      className="animate-in fade-in slide-in-from-bottom-1 fill-mode-both rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)] duration-500 transition-shadow hover:shadow-[var(--shadow-elegant)]"
+    >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Icon className="h-3.5 w-3.5" /> {label}
       </div>
@@ -37,12 +40,23 @@ type Props = {
 export function PetIndicators({ pet, lastVaccineAt, lastAppointmentAt, scanCount = 0 }: Props) {
   return (
     <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-      <Card icon={Cake} label="Idade" value={computeAge(pet.birth_date)} />
-      <Card icon={Weight} label="Peso atual" value={pet.weight_kg ? `${pet.weight_kg} kg` : "—"} />
-      <Card icon={Syringe} label="Última vacina" value={formatDate(lastVaccineAt)} />
-      <Card icon={Stethoscope} label="Última consulta" value={formatDate(lastAppointmentAt)} />
-      <Card icon={ScanLine} label="Escaneamentos" value={String(scanCount)} />
+      <Card delay={0} icon={Cake} label="Idade" value={computeAge(pet.birth_date)} />
       <Card
+        delay={40}
+        icon={Weight}
+        label="Peso atual"
+        value={pet.weight_kg ? `${pet.weight_kg} kg` : "—"}
+      />
+      <Card delay={80} icon={Syringe} label="Última vacina" value={formatDate(lastVaccineAt)} />
+      <Card
+        delay={120}
+        icon={Stethoscope}
+        label="Última consulta"
+        value={formatDate(lastAppointmentAt)}
+      />
+      <Card delay={160} icon={ScanLine} label="Escaneamentos" value={String(scanCount)} />
+      <Card
+        delay={200}
         icon={ShieldCheck}
         label="Status"
         value={pet.is_lost ? "Perdido" : "Seguro"}

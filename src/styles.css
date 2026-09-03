@@ -164,3 +164,49 @@
 .animate-confetti-fall {
   animation: confetti-fall 1.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
+
+/* Subtle FAB discoverability pulse (Home simplification sprint). */
+@keyframes fab-pulse {
+  0%,
+  70%,
+  100% {
+    box-shadow: 0 10px 25px -5px rgb(0 0 0 / 0.2);
+  }
+  85% {
+    box-shadow:
+      0 10px 30px -5px rgb(0 0 0 / 0.28),
+      0 0 0 8px color-mix(in oklab, var(--primary) 18%, transparent);
+  }
+}
+
+@keyframes fab-ring {
+  0%,
+  70%,
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+  80% {
+    transform: scale(1.35);
+    opacity: 0.3;
+  }
+  95% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+.fab-pulse {
+  animation: fab-pulse 3.5s ease-in-out infinite;
+}
+
+.fab-ring {
+  animation: fab-ring 3.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fab-pulse,
+  .fab-ring {
+    animation: none;
+  }
+}

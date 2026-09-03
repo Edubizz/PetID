@@ -6,23 +6,36 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PhotoUploader } from "@/components/PhotoUploader";
-import { PetColorField, PetMicrochipField, PetSexField } from "@/components/PetFormFields";
+import { PetBreedField, PetColorField, PetMicrochipField, PetSexField } from "@/components/PetFormFields";
 import { toast } from "sonner";
 import { logAndDescribeError } from "@/lib/errors";
 import {
   NOT_REGISTERED,
   parseProfileExtras,
+  type CompletenessItem,
   type ProfileExtras,
   type ProfileIdentificationExtras,
   type ProfileOwnerExtras,
   type ProfileVeterinaryExtras,
+  type QuickFact,
 } from "@/lib/pet-profile";
+import { ProfileQuickFacts } from "@/components/pet/ProfileQuickFacts";
+import { ProfileCompletenessCard } from "@/components/pet/ProfileCompletenessCard";
 import { HeartHandshake, IdCard, Stethoscope, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SPECIES_OPTIONS } from "@/lib/pet-constants";
 
 type PetRow = {
   id: string;
   name: string;
+  species: string | null;
   breed: string | null;
   sex: string | null;
   birth_date: string | null;
@@ -37,13 +50,24 @@ type PetRow = {
   profile_extras?: unknown;
 };
 
-export function IdentityTab({ pet }: { pet: PetRow }) {
+export function IdentityTab({
+  pet,
+  quickFacts = [],
+  completeness,
+  onNavigate,
+}: {
+  pet: PetRow;
+  quickFacts?: QuickFact[];
+  completeness?: { pct: number; missing: CompletenessItem[] } | null;
+  onNavigate?: (tab: string, action?: string, section?: string) => void;
+}) {
   const qc = useQueryClient();
   const extras = parseProfileExtras(pet.profile_extras);
 
   const [basics, setBasics] = useState({
     photo_url: pet.photo_url ?? "",
     name: pet.name,
+    species: pet.species ?? "",
     breed: pet.breed ?? "",
     sex: pet.sex ?? "",
     birth_date: pet.birth_date ?? "",
@@ -69,6 +93,7 @@ export function IdentityTab({ pet }: { pet: PetRow }) {
     setBasics({
       photo_url: pet.photo_url ?? "",
       name: pet.name,
+      species: pet.species ?? "",
       breed: pet.breed ?? "",
       sex: pet.sex ?? "",
       birth_date: pet.birth_date ?? "",
@@ -94,11 +119,17 @@ export function IdentityTab({ pet }: { pet: PetRow }) {
         owner: cleanObj(owner),
         veterinary: cleanObj(veterinary),
         identification: cleanObj(identification),
+        // Preserve assistant personalization / onboarding / public QR privacy —
+        // this form doesn't edit them, so it must not wipe them out on save.
+        assistant: extras.assistant,
+        onboarding: extras.onboarding,
+        public_visibility: extras.public_visibility,
       };
       const { error } = await supabase
         .from("pets")
         .update({
           name: basics.name.trim(),
+          species: basics.species || null,
           breed: basics.breed || null,
           sex: basics.sex || null,
           birth_date: basics.birth_date || null,
@@ -129,12 +160,28 @@ export function IdentityTab({ pet }: { pet: PetRow }) {
 
   return (
     <div className="space-y-6">
+      {quickFacts.length > 0 && (
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+          <h3 className="text-sm font-semibold">Resumo rápido</h3>
+          <ProfileQuickFacts facts={quickFacts} />
+        </section>
+      )}
+
+      {completeness && onNavigate && (
+        <ProfileCompletenessCard
+          pct={completeness.pct}
+          missing={completeness.missing}
+          onNavigate={onNavigate}
+        />
+      )}
+
       <ProfileSection
+        id="pet-section-basics"
         icon={UserRound}
         title="Dados básicos"
         subtitle="O essencial para reconhecer seu pet em qualquer lugar."
       >
-        <div className="mb-5">
+        <div id="pet-section-photo" className="mb-5 scroll-mt-24">
           <Label className="mb-1.5 block text-sm">Foto do pet</Label>
           <PhotoUploader
             value={basics.photo_url}
@@ -145,9 +192,29 @@ export function IdentityTab({ pet }: { pet: PetRow }) {
           <Field label="Nome *">
             <Input value={basics.name} onChange={(e) => setBasics({ ...basics, name: e.target.value })} />
           </Field>
-          <Field label="Raça">
-            <Input value={basics.breed} onChange={(e) => setBasics({ ...basics, breed: e.target.value })} />
-          </Field>
+          <div>
+            <Label className="mb-1.5 block text-sm">Espécie</Label>
+            <Select
+              value={basics.species}
+              onValueChange={(v) => setBasics({ ...basics, species: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione" />
+              </SelectTrigger>
+              <SelectContent>
+                {SPECIES_OPTIONS.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <PetBreedField
+            species={basics.species}
+            value={basics.breed}
+            onChange={(v) => setBasics({ ...basics, breed: v })}
+          />
           <PetSexField value={basics.sex} onChange={(v) => setBasics({ ...basics, sex: v })} />
           <Field label="Nascimento">
             <Input type="date" value={basics.birth_date} onChange={(e) => setBasics({ ...basics, birth_date: e.target.value })} />
@@ -163,6 +230,7 @@ export function IdentityTab({ pet }: { pet: PetRow }) {
       </ProfileSection>
 
       <ProfileSection
+        id="pet-section-owner"
         icon={HeartHandshake}
         title="Tutor e emergência"
         subtitle="Quem cuida do pet — e quem avisar se você não puder atender."
@@ -172,41 +240,46 @@ export function IdentityTab({ pet }: { pet: PetRow }) {
             : undefined
         }
       >
-        <p className="mb-3 text-sm font-medium">Tutor principal</p>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Nome">
-            <Input value={owner.name ?? ""} onChange={(e) => setOwner({ ...owner, name: e.target.value })} placeholder="Seu nome" />
-          </Field>
-          <Field label="Relação">
-            <Input value={owner.relationship ?? ""} onChange={(e) => setOwner({ ...owner, relationship: e.target.value })} placeholder="Tutor, responsável…" />
-          </Field>
-          <Field label="Telefone">
-            <Input value={owner.phone ?? ""} onChange={(e) => setOwner({ ...owner, phone: e.target.value })} />
-          </Field>
-          <Field label="WhatsApp">
-            <Input value={owner.whatsapp ?? ""} onChange={(e) => setOwner({ ...owner, whatsapp: e.target.value })} />
-          </Field>
-          <Field label="E-mail" wide>
-            <Input type="email" value={owner.email ?? ""} onChange={(e) => setOwner({ ...owner, email: e.target.value })} />
-          </Field>
-          <Field label="Observações" wide>
-            <Textarea rows={2} value={owner.notes ?? ""} onChange={(e) => setOwner({ ...owner, notes: e.target.value })} />
-          </Field>
+        <div id="pet-section-owner-fields" className="scroll-mt-24">
+          <p className="mb-3 text-sm font-medium">Tutor principal</p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Nome">
+              <Input value={owner.name ?? ""} onChange={(e) => setOwner({ ...owner, name: e.target.value })} placeholder="Seu nome" />
+            </Field>
+            <Field label="Relação">
+              <Input value={owner.relationship ?? ""} onChange={(e) => setOwner({ ...owner, relationship: e.target.value })} placeholder="Tutor, responsável…" />
+            </Field>
+            <Field label="Telefone">
+              <Input value={owner.phone ?? ""} onChange={(e) => setOwner({ ...owner, phone: e.target.value })} />
+            </Field>
+            <Field label="WhatsApp">
+              <Input value={owner.whatsapp ?? ""} onChange={(e) => setOwner({ ...owner, whatsapp: e.target.value })} />
+            </Field>
+            <Field label="E-mail" wide>
+              <Input type="email" value={owner.email ?? ""} onChange={(e) => setOwner({ ...owner, email: e.target.value })} />
+            </Field>
+            <Field label="Observações" wide>
+              <Textarea rows={2} value={owner.notes ?? ""} onChange={(e) => setOwner({ ...owner, notes: e.target.value })} />
+            </Field>
+          </div>
         </div>
 
         <div className="my-5 border-t border-border" />
-        <p className="mb-3 text-sm font-medium">Contato de emergência</p>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Nome">
-            <Input value={emergency.name} onChange={(e) => setEmergency({ ...emergency, name: e.target.value })} />
-          </Field>
-          <Field label="Telefone / WhatsApp">
-            <Input value={emergency.phone} onChange={(e) => setEmergency({ ...emergency, phone: e.target.value })} />
-          </Field>
+        <div id="pet-section-emergency" className="scroll-mt-24">
+          <p className="mb-3 text-sm font-medium">Contato de emergência</p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Nome">
+              <Input value={emergency.name} onChange={(e) => setEmergency({ ...emergency, name: e.target.value })} />
+            </Field>
+            <Field label="Telefone / WhatsApp">
+              <Input value={emergency.phone} onChange={(e) => setEmergency({ ...emergency, phone: e.target.value })} />
+            </Field>
+          </div>
         </div>
       </ProfileSection>
 
       <ProfileSection
+        id="pet-section-veterinary"
         icon={Stethoscope}
         title="Veterinário"
         subtitle="Facilita emergências e o acompanhamento de saúde."
@@ -237,11 +310,12 @@ export function IdentityTab({ pet }: { pet: PetRow }) {
           </Field>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Consultas futuras continuam no Dashboard e na aba Saúde — aqui fica só o cadastro permanente do veterinário.
+          Consultas futuras continuam em Geral e na aba Saúde — aqui fica só o cadastro permanente do veterinário.
         </p>
       </ProfileSection>
 
       <ProfileSection
+        id="pet-section-identification"
         icon={IdCard}
         title="Identificação"
         subtitle="Números oficiais que comprovam a identidade do pet."
@@ -295,12 +369,14 @@ function cleanObj<T extends Record<string, string | undefined>>(obj: T): T {
 }
 
 function ProfileSection({
+  id,
   icon: Icon,
   title,
   subtitle,
   emptyHint,
   children,
 }: {
+  id?: string;
   icon: LucideIcon;
   title: string;
   subtitle: string;
@@ -308,7 +384,10 @@ function ProfileSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+    <section
+      id={id}
+      className="animate-in fade-in slide-in-from-bottom-1 fill-mode-both scroll-mt-24 rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-card)] duration-500 sm:p-6"
+    >
       <div className="mb-5 flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <Icon className="h-5 w-5" />

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,11 @@ import { toast } from "sonner";
 import { formatDate } from "@/lib/pet-utils";
 import { logAndDescribeError } from "@/lib/errors";
 import { DOCUMENT_STATUS_TYPES, documentMatchesType } from "@/lib/pet-profile";
+import { EmptyState } from "@/components/EmptyState";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { useEntitlements } from "@/hooks/useEntitlements";
+import { UpgradeCard } from "@/components/billing/UpgradeCard";
+import { planUnlockLabel } from "@/lib/entitlements";
 
 const CATEGORIES = [
   "Carteira de vacinação",
@@ -33,8 +37,17 @@ const CATEGORIES = [
 
 type Doc = { id: string; title: string; category: string | null; url: string | null; created_at: string };
 
-export function DocumentsTab({ petId }: { petId: string }) {
+export function DocumentsTab({
+  petId,
+  autoOpen,
+  onConsumeAutoOpen,
+}: {
+  petId: string;
+  autoOpen?: boolean;
+  onConsumeAutoOpen?: () => void;
+}) {
   const qc = useQueryClient();
+  const { canUploadDocument } = useEntitlements();
   const [open, setOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Doc | null>(null);
   const [form, setForm] = useState({ title: "", category: CATEGORIES[0], url: "" });
@@ -89,10 +102,32 @@ export function DocumentsTab({ petId }: { petId: string }) {
   });
 
   const openAddFor = (categoryHint: string) => {
+    if (!canUploadDocument(data?.length ?? 0)) {
+      toast.error(planUnlockLabel("documents"));
+      return;
+    }
     const match = CATEGORIES.find((c) => c.toLowerCase().includes(categoryHint.toLowerCase().slice(0, 8))) ?? CATEGORIES[0];
     setForm({ title: categoryHint, category: match, url: "" });
     setOpen(true);
   };
+
+  const tryOpenAdd = () => {
+    if (!canUploadDocument(data?.length ?? 0)) {
+      toast.error(planUnlockLabel("documents"));
+      return;
+    }
+    setOpen(true);
+  };
+
+  const atDocLimit = !canUploadDocument(data?.length ?? 0);
+
+  useEffect(() => {
+    if (autoOpen) {
+      tryOpenAdd();
+      onConsumeAutoOpen?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
 
   return (
     <div className="space-y-6">
@@ -104,43 +139,51 @@ export function DocumentsTab({ petId }: { petId: string }) {
               Veja de um olhar o que já está arquivado e o que ainda falta.
             </p>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="rounded-full"><Plus className="mr-2 h-4 w-4" /> Adicionar</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Novo documento</DialogTitle></DialogHeader>
-              <div className="space-y-3">
-                <div><Label>Título *</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
-                <div>
-                  <Label className="mb-1.5 block">Tipo</Label>
-                  <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+          {atDocLimit ? (
+            <UpgradeCard
+              compact
+              title="Limite de documentos"
+              description={planUnlockLabel("documents")}
+            />
+          ) : (
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="rounded-full"><Plus className="mr-2 h-4 w-4" /> Adicionar</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Novo documento</DialogTitle></DialogHeader>
+                <div className="space-y-3">
+                  <div><Label>Título *</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
+                  <div>
+                    <Label className="mb-1.5 block">Tipo</Label>
+                    <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Link (URL)</Label>
+                    <Input type="url" placeholder="https://…" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Upload de arquivos será liberado em breve. Por enquanto, informe um link.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <Label>Link (URL)</Label>
-                  <Input type="url" placeholder="https://…" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Upload de arquivos será liberado em breve. Por enquanto, informe um link.
-                  </p>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-                <Button onClick={() => add.mutate()} disabled={add.isPending}>{add.isPending ? "Salvando…" : "Salvar"}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                <DialogFooter>
+                  <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+                  <Button onClick={() => add.mutate()} disabled={add.isPending}>{add.isPending ? "Salvando…" : "Salvar"}</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {isLoading
             ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-28 w-full rounded-2xl" />)
-            : statusCards.map((card) => (
+            : statusCards.map((card, index) => (
               <button
                 key={card.key}
                 type="button"
@@ -151,11 +194,13 @@ export function DocumentsTab({ petId }: { petId: string }) {
                     openAddFor(card.label);
                   }
                 }}
-                className={`rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)] ${
+                aria-label={card.present ? `${card.label}, arquivado. Toque para visualizar` : `${card.label} ausente. Toque para adicionar`}
+                className={`animate-in fade-in fill-mode-both rounded-2xl border p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                   card.present
                     ? "border-emerald-500/30 bg-emerald-500/5"
                     : "border-amber-500/30 bg-amber-500/5"
                 }`}
+                style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
               >
                 <div className="flex items-start gap-3">
                   {card.present ? (
@@ -206,7 +251,7 @@ export function DocumentsTab({ petId }: { petId: string }) {
                         <ExternalLink className="mr-2 h-4 w-4" /> Visualizar
                       </a>
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setToDelete(d)}>
+                    <Button size="sm" variant="ghost" onClick={() => setToDelete(d)} aria-label={`Excluir documento ${d.title}`}>
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
@@ -214,12 +259,16 @@ export function DocumentsTab({ petId }: { petId: string }) {
               ))}
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">Nenhum documento cadastrado.</p>
-              <p className="mt-1">
-                Guardar carteira de vacinação, seguro e passaporte deixa o perfil pronto para viagens e emergências.
-              </p>
-            </div>
+            <EmptyState
+              icon={FileText}
+              title="Nenhum documento cadastrado"
+              description="Guardar carteira de vacinação, seguro e passaporte deixa o perfil pronto para viagens e emergências."
+              action={
+                atDocLimit
+                  ? undefined
+                  : { label: "Adicionar documento", icon: Plus, onClick: tryOpenAdd }
+              }
+            />
           )}
         </div>
       </section>

@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { computeStats, dayKey, todayKey, type TrackerCategory } from "@/lib/daily-care";
+import { computeStats, dayKey, sumTrackerEntriesCompatible, todayKey, type TrackerCategory } from "@/lib/daily-care";
+import { evaluatePetCareExpectation } from "@/lib/daily-expectations";
 
 export type TodaysCarePet = {
   id: string;
@@ -20,19 +21,25 @@ export type TodaysCareTracker = {
   unit: string | null;
   color: string | null;
   is_active: boolean;
+  reminder_times?: string[] | null;
 };
 
-type EntryRow = { tracker_id: string; pet_id: string; value: number; completed_at: string };
+type EntryRow = {
+  tracker_id: string;
+  pet_id: string;
+  value: number;
+  completed_at: string;
+  metadata?: unknown;
+};
 
 const CARE_HISTORY_WINDOW_DAYS = 60;
-const NEEDS_ATTENTION_THRESHOLD_PCT = 50;
 
 /**
- * Cross-pet aggregate powering both the Home Dashboard summary and the
- * "Hoje" page. Reuses the same `trackers` / `tracker_entries` tables and the
- * exact same completion/streak math as the per-pet Daily Care tab
- * (`daily-care.ts` -> computeStats) — trackers/entries from every pet are
- * simply pooled together so the streak represents the whole household.
+ * Cross-pet aggregate powering the Home Dashboard. Reuses the same
+ * `trackers` / `tracker_entries` tables and the exact same completion/streak
+ * math as the per-pet Daily Care tab (`daily-care.ts` -> computeStats) —
+ * trackers/entries from every pet are pooled so the streak represents the
+ * whole household.
  */
 export function useTodaysCare() {
   const query = useQuery({
@@ -60,12 +67,12 @@ export function useTodaysCare() {
       const [trackersRes, entriesRes] = await Promise.all([
         supabase
           .from("trackers")
-          .select("id, pet_id, title, category, target_per_day, unit, color, is_active")
+          .select("id, pet_id, title, category, target_per_day, unit, color, is_active, reminder_times")
           .in("pet_id", petIds)
           .order("created_at", { ascending: true }),
         supabase
           .from("tracker_entries")
-          .select("tracker_id, pet_id, value, completed_at")
+          .select("tracker_id, pet_id, value, completed_at, metadata")
           .in("pet_id", petIds)
           .gte("completed_at", since.toISOString()),
       ]);
@@ -90,9 +97,11 @@ export function useTodaysCare() {
 
     const key = todayKey();
     const sumsByTracker = new Map<string, number>();
-    for (const e of entries) {
-      if (dayKey(e.completed_at) !== key) continue;
-      sumsByTracker.set(e.tracker_id, (sumsByTracker.get(e.tracker_id) ?? 0) + Number(e.value));
+    for (const t of trackers) {
+      sumsByTracker.set(
+        t.id,
+        sumTrackerEntriesCompatible(entries, t.id, t.unit, { day: key }),
+      );
     }
 
     const trackersByPet = new Map<string, TodaysCareTracker[]>();
@@ -101,6 +110,7 @@ export function useTodaysCare() {
       trackersByPet.get(t.pet_id)!.push(t);
     }
 
+    const now = new Date();
     const petSummaries = pets.map((pet) => {
       const petTrackers = trackersByPet.get(pet.id) ?? [];
       const active = petTrackers.filter((t) => t.is_active);
@@ -108,7 +118,18 @@ export function useTodaysCare() {
       const pct = active.length > 0
         ? Math.round((active.reduce((sum, t) => sum + Math.min(1, (sumsByTracker.get(t.id) ?? 0) / (t.target_per_day || 1)), 0) / active.length) * 100)
         : 0;
-      const needsAttention = pet.is_lost || (active.length > 0 && pct < NEEDS_ATTENTION_THRESHOLD_PCT);
+      const petEntries = entries
+        .filter((e) => e.pet_id === pet.id)
+        .map((e) => ({
+          tracker_id: e.tracker_id,
+          value: e.value,
+          completed_at: e.completed_at,
+          metadata: e.metadata,
+        }));
+      const care = evaluatePetCareExpectation(active, petEntries, now);
+      // "Needs attention" follows the expectation engine — not raw morning incompleteness.
+      const scheduleBehind = care.urgency === "attention" || care.urgency === "critical";
+      const needsAttention = pet.is_lost || scheduleBehind;
       return {
         pet,
         activeTrackers: active,

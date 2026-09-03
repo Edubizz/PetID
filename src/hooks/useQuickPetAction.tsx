@@ -26,10 +26,9 @@ function isPetNavAction(action: QuickActionKind): action is PetNavAction {
 }
 
 /**
- * Central place that turns a Quick Action tap (from the FAB or the Dashboard
- * quick actions row) into navigation + the right existing dialog opening.
- * Reused by every entry point so the "which pet / which tab / which dialog"
- * logic only lives once.
+ * Central place that turns a Quick Action tap (from the FAB) into navigation
+ * + the right existing dialog opening. Reused by every entry point so the
+ * "which pet / which tab / which dialog" logic only lives once.
  */
 export function useQuickPetAction() {
   const navigate = useNavigate();
@@ -57,7 +56,8 @@ export function useQuickPetAction() {
 
   function trigger(action: QuickActionKind) {
     if (action === "qr") return void navigate({ to: "/qr" });
-    if (action === "daily-care") return void navigate({ to: "/today" });
+    // Home absorbed the former "Hoje" page — daily care overview lives there.
+    if (action === "daily-care") return void navigate({ to: "/dashboard" });
 
     if (pets.length === 0) {
       toast.error("Cadastre um pet primeiro");

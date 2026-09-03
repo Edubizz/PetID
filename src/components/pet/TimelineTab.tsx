@@ -1,13 +1,16 @@
 import { useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useHealthTimeline, type HealthTimelinePet, HEALTH_TIMELINE_ENTRIES_WINDOW_DAYS } from "@/hooks/useHealthTimeline";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Search, Pin, PinOff, Cake, TrendingUp, TrendingDown, Minus, CalendarClock, Pill, Sparkles, ExternalLink,
-  type LucideIcon,
+  ListChecks, type LucideIcon,
 } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import {
   TIMELINE_FILTERS,
   matchesFilter,
@@ -21,11 +24,12 @@ import { computeStats } from "@/lib/daily-care";
 
 type Pet = HealthTimelinePet;
 
-export function TimelineTab({ pet }: { pet: Pet }) {
+export function TimelineTab({ pet, onNavigate }: { pet: Pet; onNavigate?: (tab: string) => void }) {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<TimelineEvent | null>(null);
   const { pins, toggle: togglePin } = usePinnedEvents(pet.id);
+  const { historyCutoffIso, historyDays } = useEntitlements();
 
   const { data, isLoading } = useHealthTimeline(pet);
 
@@ -59,13 +63,23 @@ export function TimelineTab({ pet }: { pet: Pet }) {
 
   const filteredEvents = useMemo(() => {
     const all = data?.events ?? [];
+    const cutoffMs = historyCutoffIso ? new Date(historyCutoffIso).getTime() : null;
     const q = search.trim().toLowerCase();
     return all.filter((e) => {
+      if (cutoffMs != null && new Date(e.date).getTime() < cutoffMs) return false;
       if (!matchesFilter(e, filter)) return false;
       if (!q) return true;
       return e.title.toLowerCase().includes(q) || (e.subtitle ?? "").toLowerCase().includes(q);
     });
-  }, [data, filter, search]);
+  }, [data, filter, search, historyCutoffIso]);
+
+  const hasHiddenHistory = Boolean(
+    historyDays != null &&
+      data?.events &&
+      data.events.some((e) =>
+        historyCutoffIso ? new Date(e.date).getTime() < new Date(historyCutoffIso).getTime() : false,
+      ),
+  );
 
   const pinnedEvents = useMemo(
     () => filteredEvents.filter((e) => pins.has(e.id)),
@@ -117,6 +131,15 @@ export function TimelineTab({ pet }: { pet: Pet }) {
         </div>
       </div>
 
+      {hasHiddenHistory ? (
+        <p className="text-xs text-muted-foreground">
+          Histórico completo disponível no Guardião.{" "}
+          <Link to="/pricing" className="font-medium text-primary hover:underline">
+            Ver planos
+          </Link>
+        </p>
+      ) : null}
+
       {pinnedEvents.length > 0 && (
         <section>
           <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -131,9 +154,18 @@ export function TimelineTab({ pet }: { pet: Pet }) {
       )}
 
       {buckets.length === 0 && pinnedEvents.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-          {search || filter !== "all" ? "Nenhum evento encontrado." : "Nenhum evento ainda. Comece registrando cuidados, vacinas ou pesagens."}
-        </div>
+        search || filter !== "all" ? (
+          <div className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+            Nenhum evento encontrado.
+          </div>
+        ) : (
+          <EmptyState
+            icon={Sparkles}
+            title="Nenhum evento ainda"
+            description="Toda vez que você registrar cuidados, vacinas, pesagens ou consultas, eles aparecem aqui em ordem cronológica."
+            action={onNavigate ? { label: "Começar pela rotina", icon: ListChecks, onClick: () => onNavigate("daily-care") } : undefined}
+          />
+        )
       ) : (
         buckets.map((bucket) => (
           <section key={bucket.key}>
@@ -174,7 +206,7 @@ function SummaryBar({
         label="Medicações ativas"
         value={summary.activeMedicationTrackers > 0 ? String(summary.activeMedicationTrackers) : pet.medications ? "Ver perfil" : "—"}
       />
-      <SummaryCard icon={Sparkles} label="Cuidados hoje" value={`${summary.dailyCompletionPct}%`} />
+      <SummaryCard icon={Sparkles} label="Rotina hoje" value={`${summary.dailyCompletionPct}%`} />
     </div>
   );
 }

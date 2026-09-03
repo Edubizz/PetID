@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
+import { logAndDescribeError } from "@/lib/errors";
 import { Search, ShieldCheck, ShieldOff, Trash2, ExternalLink, Dog } from "lucide-react";
 import { ConfirmDialog } from "@/components/pet/ConfirmDialog";
 
@@ -57,7 +58,7 @@ function AdminPetsPage() {
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin", "pets"] }); toast.success("Atualizado"); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(logAndDescribeError("mutation", e, "Não foi possível atualizar o pet.")),
   });
 
   const del = useMutation({
@@ -66,7 +67,7 @@ function AdminPetsPage() {
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin", "pets"] }); toast.success("Pet excluído"); setToDelete(null); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(logAndDescribeError("mutation", e, "Não foi possível atualizar o pet.")),
   });
 
   return (

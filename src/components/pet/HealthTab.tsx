@@ -15,7 +15,14 @@ import { Pencil, Plus, Syringe, Trash2, Weight } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/pet-utils";
 import { logAndDescribeError } from "@/lib/errors";
+import { EmptyState } from "@/components/EmptyState";
 import { ConfirmDialog } from "./ConfirmDialog";
+import {
+  applyMedicalPublicToggle,
+  medicalPublicFromVisibility,
+  parsePublicVisibility,
+  withPublicVisibility,
+} from "@/lib/public-visibility";
 
 type Pet = {
   id: string;
@@ -25,6 +32,7 @@ type Pet = {
   medications: string | null;
   medical_notes: string | null;
   show_medical_public: boolean;
+  profile_extras?: unknown;
 };
 
 export function HealthTab({
@@ -62,11 +70,17 @@ function MedicalCard({ pet }: { pet: Pet }) {
 
   const save = useMutation({
     mutationFn: async () => {
+      const visibility = applyMedicalPublicToggle(
+        parsePublicVisibility(pet.profile_extras),
+        form.show_medical_public,
+      );
+      const profile_extras = withPublicVisibility(pet.profile_extras ?? {}, visibility);
       const { error } = await supabase.from("pets").update({
         allergies: form.allergies || null,
         medications: form.medications || null,
         medical_notes: form.medical_notes || null,
-        show_medical_public: form.show_medical_public,
+        show_medical_public: medicalPublicFromVisibility(visibility),
+        profile_extras,
       }).eq("id", pet.id);
       if (error) throw error;
     },
@@ -102,7 +116,10 @@ function MedicalCard({ pet }: { pet: Pet }) {
               <div className="flex items-center justify-between rounded-xl border border-border p-3">
                 <div>
                   <p className="text-sm font-medium">Mostrar no perfil público</p>
-                  <p className="text-xs text-muted-foreground">Recomendado em caso de emergência.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Atalho para alergias, medicamentos e observações. Detalhes finos na aba QR
+                    Code.
+                  </p>
                 </div>
                 <Switch checked={form.show_medical_public} onCheckedChange={(v) => setForm({ ...form, show_medical_public: v })} />
               </div>
@@ -243,7 +260,12 @@ function WeightSection({
             ))}
           </ul>
         ) : (
-          <EmptyState label="Nenhuma pesagem registrada ainda." />
+          <EmptyState
+            icon={Weight}
+            title="Nenhuma pesagem registrada ainda"
+            description="Vamos usar o histórico de peso para detectar tendências de saúde a longo prazo."
+            action={{ label: "Registrar primeiro peso", icon: Plus, onClick: () => setOpen(true) }}
+          />
         )}
       </div>
     </section>
@@ -395,8 +417,8 @@ function VaccinesSection({
                     <td className="px-3 py-2">{v.next_dose ? <Badge variant="outline">{formatDate(v.next_dose)}</Badge> : "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{v.vet_name ?? "—"}</td>
                     <td className="px-3 py-2 text-right">
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" onClick={() => setToDelete(v)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(v)} aria-label={`Editar vacina ${v.name}`}><Pencil className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" onClick={() => setToDelete(v)} aria-label={`Excluir vacina ${v.name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </td>
                   </tr>
                 ))}
@@ -404,7 +426,12 @@ function VaccinesSection({
             </table>
           </div>
         ) : (
-          <EmptyState label="Nenhuma vacina registrada. Adicione a primeira!" />
+          <EmptyState
+            icon={Syringe}
+            title="Nenhuma vacina registrada ainda"
+            description="Manter as vacinas em dia ajuda a prevenir doenças graves — e o assistente avisa antes do vencimento."
+            action={{ label: "Adicionar vacina", icon: Plus, onClick: openNew }}
+          />
         )}
       </div>
 
@@ -451,13 +478,5 @@ function VaccinesSection({
         onConfirm={() => { if (toDelete) remove.mutate(toDelete.id); }}
       />
     </section>
-  );
-}
-
-function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-      {label}
-    </div>
   );
 }

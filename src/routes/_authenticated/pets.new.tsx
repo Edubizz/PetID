@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { logAndDescribeError } from "@/lib/errors";
 import { PhotoUploader } from "@/components/PhotoUploader";
-import { PetColorField, PetMicrochipField, PetSexField } from "@/components/PetFormFields";
+import { PetBreedField, PetColorField, PetMicrochipField, PetSexField } from "@/components/PetFormFields";
 import {
   Select,
   SelectContent,
@@ -19,6 +19,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SPECIES_OPTIONS } from "@/lib/pet-constants";
+import { SAFE_PUBLIC_VISIBILITY, withPublicVisibility } from "@/lib/public-visibility";
+import { useEntitlements } from "@/hooks/useEntitlements";
+import { UpgradeCard } from "@/components/billing/UpgradeCard";
+import { planUnlockLabel } from "@/lib/entitlements";
+import { getPendingTagActivation, navigateToPendingActivation } from "@/lib/pending-tag-activation";
 
 export const Route = createFileRoute("/_authenticated/pets/new")({
   component: NewPet,
@@ -27,6 +32,9 @@ export const Route = createFileRoute("/_authenticated/pets/new")({
 function NewPet() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { petCount, canCreatePet, isLoading: entitlementsLoading } = useEntitlements();
+  const allowed = canCreatePet(petCount);
+  const pendingTag = getPendingTagActivation();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -46,6 +54,9 @@ function NewPet() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return toast.error("Informe o nome do pet.");
+    if (!allowed) {
+      return toast.error(planUnlockLabel("pets"));
+    }
     setLoading(true);
     const { data: user } = await supabase.auth.getUser();
     if (!user.user) {
@@ -66,6 +77,8 @@ function NewPet() {
         microchip: form.microchip && form.microchip.trim() ? form.microchip.trim() : null,
         photo_url: form.photo_url || null,
         medical_notes: form.medical_notes || null,
+        show_medical_public: false,
+        profile_extras: withPublicVisibility({}, SAFE_PUBLIC_VISIBILITY),
       })
       .select()
       .single();
@@ -75,9 +88,20 @@ function NewPet() {
     // "Meus Pets", Dashboard and Today were fetched before this pet existed —
     // without this they'd keep missing it until their 60s staleTime expires.
     qc.invalidateQueries({ queryKey: ["pets"] });
+    qc.invalidateQueries({ queryKey: ["entitlements"] });
     qc.invalidateQueries({ queryKey: ["today-care-overview"] });
     qc.invalidateQueries({ queryKey: ["pets-quick-picker"] });
-    navigate({ to: "/pets/$id", params: { id: data.id } });
+
+    // Pending physical-tag activation: return to activate flow (do not stop at profile).
+    if (navigateToPendingActivation(navigate, { petId: data.id })) {
+      toast.message("Agora finalize a ativação da tag com o código da embalagem.");
+      return;
+    }
+
+    // Guide first-time setup instead of dropping the user into an empty
+    // profile — the wizard orchestrates the same tabs/mutations and lands
+    // on /pets/$id itself once it's done.
+    navigate({ to: "/pets/$id/onboarding", params: { id: data.id } });
   };
 
   return (
@@ -86,7 +110,20 @@ function NewPet() {
         <ArrowLeft className="h-4 w-4" /> Voltar
       </Link>
       <h1 className="text-3xl font-bold tracking-tight">Novo Pet</h1>
-      <p className="mt-1 text-muted-foreground">Preencha as informações básicas — você pode completar depois.</p>
+      <p className="mt-1 text-muted-foreground">
+        {pendingTag
+          ? "Cadastre o pet para vincular à tag. Depois você volta automaticamente para a ativação."
+          : "Preencha as informações básicas — você pode completar depois."}
+      </p>
+
+      {!entitlementsLoading && !allowed ? (
+        <div className="mt-6">
+          <UpgradeCard
+            title="Limite de pets atingido"
+            description={planUnlockLabel("pets")}
+          />
+        </div>
+      ) : null}
 
       <form onSubmit={submit} className="mt-8 space-y-5 rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
         <div>
@@ -103,14 +140,24 @@ function NewPet() {
           </div>
           <div>
             <Label className="mb-1.5 block text-sm">Espécie</Label>
-            <Select value={form.species} onValueChange={(v) => update("species", v)}>
+            <Select
+              value={form.species}
+              onValueChange={(v) => {
+                update("species", v);
+                // Keep breed text; PetBreedField will treat unknown values as custom.
+              }}
+            >
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>
                 {SPECIES_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <div><Label>Raça</Label><Input value={form.breed} onChange={(e) => update("breed", e.target.value)} /></div>
+          <PetBreedField
+            species={form.species}
+            value={form.breed}
+            onChange={(v) => update("breed", v)}
+          />
           <PetSexField value={form.sex} onChange={(v) => update("sex", v)} />
           <div><Label>Data de nascimento</Label><Input type="date" value={form.birth_date} onChange={(e) => update("birth_date", e.target.value)} /></div>
           <div><Label>Peso (kg)</Label><Input type="number" step="0.1" value={form.weight_kg} onChange={(e) => update("weight_kg", e.target.value)} /></div>
@@ -122,7 +169,7 @@ function NewPet() {
           <div className="md:col-span-2"><Label>Observações médicas</Label><Textarea rows={3} value={form.medical_notes} onChange={(e) => update("medical_notes", e.target.value)} /></div>
         </div>
         <div className="flex gap-3 pt-2">
-          <Button type="submit" disabled={loading} className="rounded-full">Criar pet</Button>
+          <Button type="submit" disabled={loading || entitlementsLoading || !allowed} className="rounded-full">Criar pet</Button>
           <Button type="button" variant="ghost" asChild><Link to="/pets">Cancelar</Link></Button>
         </div>
       </form>

@@ -9,7 +9,10 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermosRouteImport } from './routes/termos'
+import { Route as SuporteRouteImport } from './routes/suporte'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as ClaimAdminRouteImport } from './routes/claim-admin'
 import { Route as AuthCallbackRouteImport } from './routes/auth-callback'
 import { Route as AuthRouteImport } from './routes/auth'
@@ -17,28 +20,53 @@ import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as VTokenRouteImport } from './routes/v.$token'
+import { Route as TTokenRouteImport } from './routes/t.$token'
 import { Route as PSlugRouteImport } from './routes/p.$slug'
 import { Route as AdminVerificationsRouteImport } from './routes/admin/verifications'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as AdminTagsRouteImport } from './routes/admin/tags'
 import { Route as AdminStatsRouteImport } from './routes/admin/stats'
 import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
 import { Route as AdminPetsRouteImport } from './routes/admin/pets'
 import { Route as AdminLostRouteImport } from './routes/admin/lost'
+import { Route as AdminBetaAccessRouteImport } from './routes/admin/beta-access'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as AuthenticatedVaccinesRouteImport } from './routes/_authenticated/vaccines'
 import { Route as AuthenticatedTodayRouteImport } from './routes/_authenticated/today'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedQrRouteImport } from './routes/_authenticated/qr'
+import { Route as AuthenticatedPricingRouteImport } from './routes/_authenticated/pricing'
 import { Route as AuthenticatedPetsRouteImport } from './routes/_authenticated/pets'
+import { Route as AuthenticatedLegalAcceptRouteImport } from './routes/_authenticated/legal-accept'
 import { Route as AuthenticatedDocumentsRouteImport } from './routes/_authenticated/documents'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAppointmentsRouteImport } from './routes/_authenticated/appointments'
+import { Route as AuthenticatedActivateTagRouteImport } from './routes/_authenticated/activate-tag'
+import { Route as AuthenticatedVetIndexRouteImport } from './routes/_authenticated/vet/index'
 import { Route as AuthenticatedPetsNewRouteImport } from './routes/_authenticated/pets.new'
 import { Route as AuthenticatedPetsIdRouteImport } from './routes/_authenticated/pets.$id'
+import { Route as AuthenticatedVetPetsIdRouteImport } from './routes/_authenticated/vet/pets.$id'
+import { Route as AuthenticatedPetsIdOnboardingRouteImport } from './routes/_authenticated/pets.$id.onboarding'
 
+const TermosRoute = TermosRouteImport.update({
+  id: '/termos',
+  path: '/termos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuporteRoute = SuporteRouteImport.update({
+  id: '/suporte',
+  path: '/suporte',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacidadeRoute = PrivacidadeRouteImport.update({
+  id: '/privacidade',
+  path: '/privacidade',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClaimAdminRoute = ClaimAdminRouteImport.update({
@@ -75,6 +103,16 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const VTokenRoute = VTokenRouteImport.update({
+  id: '/v/$token',
+  path: '/v/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TTokenRoute = TTokenRouteImport.update({
+  id: '/t/$token',
+  path: '/t/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PSlugRoute = PSlugRouteImport.update({
   id: '/p/$slug',
   path: '/p/$slug',
@@ -88,6 +126,11 @@ const AdminVerificationsRoute = AdminVerificationsRouteImport.update({
 const AdminUsersRoute = AdminUsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminTagsRoute = AdminTagsRouteImport.update({
+  id: '/tags',
+  path: '/tags',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminStatsRoute = AdminStatsRouteImport.update({
@@ -108,6 +151,11 @@ const AdminPetsRoute = AdminPetsRouteImport.update({
 const AdminLostRoute = AdminLostRouteImport.update({
   id: '/lost',
   path: '/lost',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminBetaAccessRoute = AdminBetaAccessRouteImport.update({
+  id: '/beta-access',
+  path: '/beta-access',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminAuditRoute = AdminAuditRouteImport.update({
@@ -135,11 +183,22 @@ const AuthenticatedQrRoute = AuthenticatedQrRouteImport.update({
   path: '/qr',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedPricingRoute = AuthenticatedPricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPetsRoute = AuthenticatedPetsRouteImport.update({
   id: '/pets',
   path: '/pets',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedLegalAcceptRoute =
+  AuthenticatedLegalAcceptRouteImport.update({
+    id: '/legal-accept',
+    path: '/legal-accept',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDocumentsRoute = AuthenticatedDocumentsRouteImport.update({
   id: '/documents',
   path: '/documents',
@@ -156,6 +215,17 @@ const AuthenticatedAppointmentsRoute =
     path: '/appointments',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedActivateTagRoute =
+  AuthenticatedActivateTagRouteImport.update({
+    id: '/activate-tag',
+    path: '/activate-tag',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedVetIndexRoute = AuthenticatedVetIndexRouteImport.update({
+  id: '/vet/',
+  path: '/vet/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPetsNewRoute = AuthenticatedPetsNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -166,6 +236,17 @@ const AuthenticatedPetsIdRoute = AuthenticatedPetsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AuthenticatedPetsRoute,
 } as any)
+const AuthenticatedVetPetsIdRoute = AuthenticatedVetPetsIdRouteImport.update({
+  id: '/vet/pets/$id',
+  path: '/vet/pets/$id',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPetsIdOnboardingRoute =
+  AuthenticatedPetsIdOnboardingRouteImport.update({
+    id: '/onboarding',
+    path: '/onboarding',
+    getParentRoute: () => AuthenticatedPetsIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -173,52 +254,78 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
   '/claim-admin': typeof ClaimAdminRoute
+  '/privacidade': typeof PrivacidadeRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/suporte': typeof SuporteRoute
+  '/termos': typeof TermosRoute
+  '/activate-tag': typeof AuthenticatedActivateTagRoute
   '/appointments': typeof AuthenticatedAppointmentsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRoute
+  '/legal-accept': typeof AuthenticatedLegalAcceptRoute
   '/pets': typeof AuthenticatedPetsRouteWithChildren
+  '/pricing': typeof AuthenticatedPricingRoute
   '/qr': typeof AuthenticatedQrRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/today': typeof AuthenticatedTodayRoute
   '/vaccines': typeof AuthenticatedVaccinesRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/beta-access': typeof AdminBetaAccessRoute
   '/admin/lost': typeof AdminLostRoute
   '/admin/pets': typeof AdminPetsRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/stats': typeof AdminStatsRoute
+  '/admin/tags': typeof AdminTagsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/verifications': typeof AdminVerificationsRoute
   '/p/$slug': typeof PSlugRoute
+  '/t/$token': typeof TTokenRoute
+  '/v/$token': typeof VTokenRoute
   '/admin/': typeof AdminIndexRoute
-  '/pets/$id': typeof AuthenticatedPetsIdRoute
+  '/pets/$id': typeof AuthenticatedPetsIdRouteWithChildren
   '/pets/new': typeof AuthenticatedPetsNewRoute
+  '/vet/': typeof AuthenticatedVetIndexRoute
+  '/pets/$id/onboarding': typeof AuthenticatedPetsIdOnboardingRoute
+  '/vet/pets/$id': typeof AuthenticatedVetPetsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
   '/claim-admin': typeof ClaimAdminRoute
+  '/privacidade': typeof PrivacidadeRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/suporte': typeof SuporteRoute
+  '/termos': typeof TermosRoute
+  '/activate-tag': typeof AuthenticatedActivateTagRoute
   '/appointments': typeof AuthenticatedAppointmentsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRoute
+  '/legal-accept': typeof AuthenticatedLegalAcceptRoute
   '/pets': typeof AuthenticatedPetsRouteWithChildren
+  '/pricing': typeof AuthenticatedPricingRoute
   '/qr': typeof AuthenticatedQrRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/today': typeof AuthenticatedTodayRoute
   '/vaccines': typeof AuthenticatedVaccinesRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/beta-access': typeof AdminBetaAccessRoute
   '/admin/lost': typeof AdminLostRoute
   '/admin/pets': typeof AdminPetsRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/stats': typeof AdminStatsRoute
+  '/admin/tags': typeof AdminTagsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/verifications': typeof AdminVerificationsRoute
   '/p/$slug': typeof PSlugRoute
+  '/t/$token': typeof TTokenRoute
+  '/v/$token': typeof VTokenRoute
   '/admin': typeof AdminIndexRoute
-  '/pets/$id': typeof AuthenticatedPetsIdRoute
+  '/pets/$id': typeof AuthenticatedPetsIdRouteWithChildren
   '/pets/new': typeof AuthenticatedPetsNewRoute
+  '/vet': typeof AuthenticatedVetIndexRoute
+  '/pets/$id/onboarding': typeof AuthenticatedPetsIdOnboardingRoute
+  '/vet/pets/$id': typeof AuthenticatedVetPetsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -228,26 +335,39 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/auth-callback': typeof AuthCallbackRoute
   '/claim-admin': typeof ClaimAdminRoute
+  '/privacidade': typeof PrivacidadeRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/suporte': typeof SuporteRoute
+  '/termos': typeof TermosRoute
+  '/_authenticated/activate-tag': typeof AuthenticatedActivateTagRoute
   '/_authenticated/appointments': typeof AuthenticatedAppointmentsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/documents': typeof AuthenticatedDocumentsRoute
+  '/_authenticated/legal-accept': typeof AuthenticatedLegalAcceptRoute
   '/_authenticated/pets': typeof AuthenticatedPetsRouteWithChildren
+  '/_authenticated/pricing': typeof AuthenticatedPricingRoute
   '/_authenticated/qr': typeof AuthenticatedQrRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/today': typeof AuthenticatedTodayRoute
   '/_authenticated/vaccines': typeof AuthenticatedVaccinesRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/beta-access': typeof AdminBetaAccessRoute
   '/admin/lost': typeof AdminLostRoute
   '/admin/pets': typeof AdminPetsRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/stats': typeof AdminStatsRoute
+  '/admin/tags': typeof AdminTagsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/verifications': typeof AdminVerificationsRoute
   '/p/$slug': typeof PSlugRoute
+  '/t/$token': typeof TTokenRoute
+  '/v/$token': typeof VTokenRoute
   '/admin/': typeof AdminIndexRoute
-  '/_authenticated/pets/$id': typeof AuthenticatedPetsIdRoute
+  '/_authenticated/pets/$id': typeof AuthenticatedPetsIdRouteWithChildren
   '/_authenticated/pets/new': typeof AuthenticatedPetsNewRoute
+  '/_authenticated/vet/': typeof AuthenticatedVetIndexRoute
+  '/_authenticated/pets/$id/onboarding': typeof AuthenticatedPetsIdOnboardingRoute
+  '/_authenticated/vet/pets/$id': typeof AuthenticatedVetPetsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -257,52 +377,78 @@ export interface FileRouteTypes {
     | '/auth'
     | '/auth-callback'
     | '/claim-admin'
+    | '/privacidade'
     | '/reset-password'
+    | '/suporte'
+    | '/termos'
+    | '/activate-tag'
     | '/appointments'
     | '/dashboard'
     | '/documents'
+    | '/legal-accept'
     | '/pets'
+    | '/pricing'
     | '/qr'
     | '/settings'
     | '/today'
     | '/vaccines'
     | '/admin/audit'
+    | '/admin/beta-access'
     | '/admin/lost'
     | '/admin/pets'
     | '/admin/settings'
     | '/admin/stats'
+    | '/admin/tags'
     | '/admin/users'
     | '/admin/verifications'
     | '/p/$slug'
+    | '/t/$token'
+    | '/v/$token'
     | '/admin/'
     | '/pets/$id'
     | '/pets/new'
+    | '/vet/'
+    | '/pets/$id/onboarding'
+    | '/vet/pets/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/auth-callback'
     | '/claim-admin'
+    | '/privacidade'
     | '/reset-password'
+    | '/suporte'
+    | '/termos'
+    | '/activate-tag'
     | '/appointments'
     | '/dashboard'
     | '/documents'
+    | '/legal-accept'
     | '/pets'
+    | '/pricing'
     | '/qr'
     | '/settings'
     | '/today'
     | '/vaccines'
     | '/admin/audit'
+    | '/admin/beta-access'
     | '/admin/lost'
     | '/admin/pets'
     | '/admin/settings'
     | '/admin/stats'
+    | '/admin/tags'
     | '/admin/users'
     | '/admin/verifications'
     | '/p/$slug'
+    | '/t/$token'
+    | '/v/$token'
     | '/admin'
     | '/pets/$id'
     | '/pets/new'
+    | '/vet'
+    | '/pets/$id/onboarding'
+    | '/vet/pets/$id'
   id:
     | '__root__'
     | '/'
@@ -311,26 +457,39 @@ export interface FileRouteTypes {
     | '/auth'
     | '/auth-callback'
     | '/claim-admin'
+    | '/privacidade'
     | '/reset-password'
+    | '/suporte'
+    | '/termos'
+    | '/_authenticated/activate-tag'
     | '/_authenticated/appointments'
     | '/_authenticated/dashboard'
     | '/_authenticated/documents'
+    | '/_authenticated/legal-accept'
     | '/_authenticated/pets'
+    | '/_authenticated/pricing'
     | '/_authenticated/qr'
     | '/_authenticated/settings'
     | '/_authenticated/today'
     | '/_authenticated/vaccines'
     | '/admin/audit'
+    | '/admin/beta-access'
     | '/admin/lost'
     | '/admin/pets'
     | '/admin/settings'
     | '/admin/stats'
+    | '/admin/tags'
     | '/admin/users'
     | '/admin/verifications'
     | '/p/$slug'
+    | '/t/$token'
+    | '/v/$token'
     | '/admin/'
     | '/_authenticated/pets/$id'
     | '/_authenticated/pets/new'
+    | '/_authenticated/vet/'
+    | '/_authenticated/pets/$id/onboarding'
+    | '/_authenticated/vet/pets/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -340,17 +499,43 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   ClaimAdminRoute: typeof ClaimAdminRoute
+  PrivacidadeRoute: typeof PrivacidadeRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  SuporteRoute: typeof SuporteRoute
+  TermosRoute: typeof TermosRoute
   PSlugRoute: typeof PSlugRoute
+  TTokenRoute: typeof TTokenRoute
+  VTokenRoute: typeof VTokenRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/termos': {
+      id: '/termos'
+      path: '/termos'
+      fullPath: '/termos'
+      preLoaderRoute: typeof TermosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/suporte': {
+      id: '/suporte'
+      path: '/suporte'
+      fullPath: '/suporte'
+      preLoaderRoute: typeof SuporteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacidade': {
+      id: '/privacidade'
+      path: '/privacidade'
+      fullPath: '/privacidade'
+      preLoaderRoute: typeof PrivacidadeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/claim-admin': {
@@ -402,6 +587,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/v/$token': {
+      id: '/v/$token'
+      path: '/v/$token'
+      fullPath: '/v/$token'
+      preLoaderRoute: typeof VTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/t/$token': {
+      id: '/t/$token'
+      path: '/t/$token'
+      fullPath: '/t/$token'
+      preLoaderRoute: typeof TTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/p/$slug': {
       id: '/p/$slug'
       path: '/p/$slug'
@@ -421,6 +620,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/admin/users'
       preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/tags': {
+      id: '/admin/tags'
+      path: '/tags'
+      fullPath: '/admin/tags'
+      preLoaderRoute: typeof AdminTagsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/stats': {
@@ -449,6 +655,13 @@ declare module '@tanstack/react-router' {
       path: '/lost'
       fullPath: '/admin/lost'
       preLoaderRoute: typeof AdminLostRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/beta-access': {
+      id: '/admin/beta-access'
+      path: '/beta-access'
+      fullPath: '/admin/beta-access'
+      preLoaderRoute: typeof AdminBetaAccessRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/audit': {
@@ -486,11 +699,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedQrRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/pricing': {
+      id: '/_authenticated/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof AuthenticatedPricingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/pets': {
       id: '/_authenticated/pets'
       path: '/pets'
       fullPath: '/pets'
       preLoaderRoute: typeof AuthenticatedPetsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/legal-accept': {
+      id: '/_authenticated/legal-accept'
+      path: '/legal-accept'
+      fullPath: '/legal-accept'
+      preLoaderRoute: typeof AuthenticatedLegalAcceptRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/documents': {
@@ -514,6 +741,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppointmentsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/activate-tag': {
+      id: '/_authenticated/activate-tag'
+      path: '/activate-tag'
+      fullPath: '/activate-tag'
+      preLoaderRoute: typeof AuthenticatedActivateTagRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/vet/': {
+      id: '/_authenticated/vet/'
+      path: '/vet'
+      fullPath: '/vet/'
+      preLoaderRoute: typeof AuthenticatedVetIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/pets/new': {
       id: '/_authenticated/pets/new'
       path: '/new'
@@ -528,16 +769,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPetsIdRouteImport
       parentRoute: typeof AuthenticatedPetsRoute
     }
+    '/_authenticated/vet/pets/$id': {
+      id: '/_authenticated/vet/pets/$id'
+      path: '/vet/pets/$id'
+      fullPath: '/vet/pets/$id'
+      preLoaderRoute: typeof AuthenticatedVetPetsIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/pets/$id/onboarding': {
+      id: '/_authenticated/pets/$id/onboarding'
+      path: '/onboarding'
+      fullPath: '/pets/$id/onboarding'
+      preLoaderRoute: typeof AuthenticatedPetsIdOnboardingRouteImport
+      parentRoute: typeof AuthenticatedPetsIdRoute
+    }
   }
 }
 
+interface AuthenticatedPetsIdRouteChildren {
+  AuthenticatedPetsIdOnboardingRoute: typeof AuthenticatedPetsIdOnboardingRoute
+}
+
+const AuthenticatedPetsIdRouteChildren: AuthenticatedPetsIdRouteChildren = {
+  AuthenticatedPetsIdOnboardingRoute: AuthenticatedPetsIdOnboardingRoute,
+}
+
+const AuthenticatedPetsIdRouteWithChildren =
+  AuthenticatedPetsIdRoute._addFileChildren(AuthenticatedPetsIdRouteChildren)
+
 interface AuthenticatedPetsRouteChildren {
-  AuthenticatedPetsIdRoute: typeof AuthenticatedPetsIdRoute
+  AuthenticatedPetsIdRoute: typeof AuthenticatedPetsIdRouteWithChildren
   AuthenticatedPetsNewRoute: typeof AuthenticatedPetsNewRoute
 }
 
 const AuthenticatedPetsRouteChildren: AuthenticatedPetsRouteChildren = {
-  AuthenticatedPetsIdRoute: AuthenticatedPetsIdRoute,
+  AuthenticatedPetsIdRoute: AuthenticatedPetsIdRouteWithChildren,
   AuthenticatedPetsNewRoute: AuthenticatedPetsNewRoute,
 }
 
@@ -545,25 +811,35 @@ const AuthenticatedPetsRouteWithChildren =
   AuthenticatedPetsRoute._addFileChildren(AuthenticatedPetsRouteChildren)
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedActivateTagRoute: typeof AuthenticatedActivateTagRoute
   AuthenticatedAppointmentsRoute: typeof AuthenticatedAppointmentsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRoute
+  AuthenticatedLegalAcceptRoute: typeof AuthenticatedLegalAcceptRoute
   AuthenticatedPetsRoute: typeof AuthenticatedPetsRouteWithChildren
+  AuthenticatedPricingRoute: typeof AuthenticatedPricingRoute
   AuthenticatedQrRoute: typeof AuthenticatedQrRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTodayRoute: typeof AuthenticatedTodayRoute
   AuthenticatedVaccinesRoute: typeof AuthenticatedVaccinesRoute
+  AuthenticatedVetIndexRoute: typeof AuthenticatedVetIndexRoute
+  AuthenticatedVetPetsIdRoute: typeof AuthenticatedVetPetsIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedActivateTagRoute: AuthenticatedActivateTagRoute,
   AuthenticatedAppointmentsRoute: AuthenticatedAppointmentsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDocumentsRoute: AuthenticatedDocumentsRoute,
+  AuthenticatedLegalAcceptRoute: AuthenticatedLegalAcceptRoute,
   AuthenticatedPetsRoute: AuthenticatedPetsRouteWithChildren,
+  AuthenticatedPricingRoute: AuthenticatedPricingRoute,
   AuthenticatedQrRoute: AuthenticatedQrRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTodayRoute: AuthenticatedTodayRoute,
   AuthenticatedVaccinesRoute: AuthenticatedVaccinesRoute,
+  AuthenticatedVetIndexRoute: AuthenticatedVetIndexRoute,
+  AuthenticatedVetPetsIdRoute: AuthenticatedVetPetsIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -571,10 +847,12 @@ const AuthenticatedRouteRouteWithChildren =
 
 interface AdminRouteRouteChildren {
   AdminAuditRoute: typeof AdminAuditRoute
+  AdminBetaAccessRoute: typeof AdminBetaAccessRoute
   AdminLostRoute: typeof AdminLostRoute
   AdminPetsRoute: typeof AdminPetsRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminStatsRoute: typeof AdminStatsRoute
+  AdminTagsRoute: typeof AdminTagsRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminVerificationsRoute: typeof AdminVerificationsRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -582,10 +860,12 @@ interface AdminRouteRouteChildren {
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminAuditRoute: AdminAuditRoute,
+  AdminBetaAccessRoute: AdminBetaAccessRoute,
   AdminLostRoute: AdminLostRoute,
   AdminPetsRoute: AdminPetsRoute,
   AdminSettingsRoute: AdminSettingsRoute,
   AdminStatsRoute: AdminStatsRoute,
+  AdminTagsRoute: AdminTagsRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminVerificationsRoute: AdminVerificationsRoute,
   AdminIndexRoute: AdminIndexRoute,
@@ -602,8 +882,13 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   ClaimAdminRoute: ClaimAdminRoute,
+  PrivacidadeRoute: PrivacidadeRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  SuporteRoute: SuporteRoute,
+  TermosRoute: TermosRoute,
   PSlugRoute: PSlugRoute,
+  TTokenRoute: TTokenRoute,
+  VTokenRoute: VTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

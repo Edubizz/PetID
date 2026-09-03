@@ -15,7 +15,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Mail, Pencil, Phone, Plus, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
+import { logAndDescribeError } from "@/lib/errors";
+import { EmptyState } from "@/components/EmptyState";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { useEntitlements } from "@/hooks/useEntitlements";
+import { UpgradeCard } from "@/components/billing/UpgradeCard";
+import { planUnlockLabel } from "@/lib/entitlements";
 
 const RELATIONSHIPS = [
   "Tutor principal", "Cônjuge", "Filho(a)", "Familiar", "Passeador",
@@ -32,6 +37,7 @@ const EMPTY: FormState = { name: "", phone: "", email: "", relationship: RELATIO
 
 export function CaretakersTab({ petId }: { petId: string }) {
   const qc = useQueryClient();
+  const { canAddCaretaker } = useEntitlements();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Caretaker | null>(null);
   const [toDelete, setToDelete] = useState<Caretaker | null>(null);
@@ -46,7 +52,16 @@ export function CaretakersTab({ petId }: { petId: string }) {
     },
   });
 
-  const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
+  const openNew = () => {
+    if (!canAddCaretaker(data?.length ?? 0)) {
+      toast.error(planUnlockLabel("caretakers"));
+      return;
+    }
+    setEditing(null);
+    setForm(EMPTY);
+    setOpen(true);
+  };
+  const atCaretakerLimit = !canAddCaretaker(data?.length ?? 0);
   const openEdit = (c: Caretaker) => {
     setEditing(c);
     setForm({
@@ -77,7 +92,7 @@ export function CaretakersTab({ petId }: { petId: string }) {
       qc.invalidateQueries({ queryKey: ["caretakers", petId] });
       setOpen(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(logAndDescribeError("mutation", e, "Não foi possível atualizar o tutor.")),
   });
 
   const remove = useMutation({
@@ -90,7 +105,7 @@ export function CaretakersTab({ petId }: { petId: string }) {
       qc.invalidateQueries({ queryKey: ["caretakers", petId] });
       setToDelete(null);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(logAndDescribeError("mutation", e, "Não foi possível atualizar o tutor.")),
   });
 
   return (
@@ -100,9 +115,17 @@ export function CaretakersTab({ petId }: { petId: string }) {
           <h3 className="text-lg font-semibold">Tutores e responsáveis</h3>
           <p className="text-sm text-muted-foreground">Pessoas autorizadas a cuidar deste pet.</p>
         </div>
-        <Button size="sm" className="rounded-full" onClick={openNew}>
-          <Plus className="mr-2 h-4 w-4" /> Adicionar tutor
-        </Button>
+        {atCaretakerLimit ? (
+          <UpgradeCard
+            compact
+            title="Limite de tutores"
+            description={planUnlockLabel("caretakers")}
+          />
+        ) : (
+          <Button size="sm" className="rounded-full" onClick={openNew}>
+            <Plus className="mr-2 h-4 w-4" /> Adicionar tutor
+          </Button>
+        )}
       </div>
 
       <div className="mt-5">
@@ -110,8 +133,12 @@ export function CaretakersTab({ petId }: { petId: string }) {
           <div className="grid gap-3 md:grid-cols-2"><Skeleton className="h-28 w-full" /><Skeleton className="h-28 w-full" /></div>
         ) : data && data.length > 0 ? (
           <div className="grid gap-3 md:grid-cols-2">
-            {data.map((c) => (
-              <div key={c.id} className="rounded-xl border border-border p-4">
+            {data.map((c, index) => (
+              <div
+                key={c.id}
+                className="animate-in fade-in slide-in-from-bottom-1 rounded-xl border border-border p-4 fill-mode-both duration-300"
+                style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-3 min-w-0">
                     <div className="rounded-full bg-secondary p-2"><User className="h-5 w-5" /></div>
@@ -127,16 +154,23 @@ export function CaretakersTab({ petId }: { petId: string }) {
                   {c.email ? <p className="flex items-center gap-2 text-muted-foreground"><Mail className="h-3.5 w-3.5" /> {c.email}</p> : null}
                 </div>
                 <div className="mt-3 flex justify-end gap-1">
-                  <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => setToDelete(c)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => openEdit(c)} aria-label={`Editar tutor ${c.name}`}><Pencil className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => setToDelete(c)} aria-label={`Remover tutor ${c.name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-            Nenhum tutor cadastrado além de você.
-          </div>
+          <EmptyState
+            icon={User}
+            title="Nenhum tutor cadastrado além de você"
+            description="Adicionar outros tutores ou passeadores garante que alguém de confiança sempre possa cuidar do pet."
+            action={
+              atCaretakerLimit
+                ? undefined
+                : { label: "Adicionar tutor", icon: Plus, onClick: openNew }
+            }
+          />
         )}
       </div>
 
